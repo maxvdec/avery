@@ -9,6 +9,7 @@
 
 #include "disk/ata.h"
 #include "common.h"
+#include "vga.h"
 
 bool ata_detect(u8 bus, u8 drive) {
     u16 io = (bus == 0) ? 0x1F0 : 0x170;
@@ -70,6 +71,11 @@ void ata_read_sector(u8 bus, u8 drive, u32 lba, u8 *buffer) {
 void ata_write_sector(u8 bus, u8 drive, u32 lba, u8 *buffer) {
     u16 io = (bus == 0) ? 0x1F0 : 0x170;
 
+    if (lba < 0x20 || lba >= 0x1000) {
+        write("ERROR: Attempting to write to a reserved/system sector.\n");
+        return;
+    }
+
     outb(io + 6, 0xE0 | (drive << 4) | ((lba >> 24) & 0x0F));
 
     outb(io + 1, 0x00);
@@ -80,11 +86,45 @@ void ata_write_sector(u8 bus, u8 drive, u32 lba, u8 *buffer) {
 
     outb(io + 7, 0x30);
 
-    while (!(inb(io + 7) & 0x08))
-        ;
+    u32 timeout = 10000;
+    while (!(inb(io + 7) & 0x08)) {
+        if (--timeout == 0) {
+            write("ERROR: ATA write timeout.\n");
+            return;
+        }
+    }
+
+    u8 status = inb(io + 7);
+    if (status & 0x01) {
+        write("ERROR: ATA write failed (status error).\n");
+        return;
+    }
 
     for (u32 i = 0; i < 256; i++) {
         u16 data = (buffer[i * 2 + 1] << 8) | buffer[i * 2];
         outw(io, data);
+    }
+
+    timeout = 10000;
+    while (!(inb(io + 7) & 0x08)) {
+        if (--timeout == 0) {
+            status = inb(io + 7);
+            if (status & 0x01) {
+                write("ERROR: ATA write failed (status error).\n");
+            } else if (status & 0x02) {
+                write("ERROR: ATA write failed (drive is busy).\n");
+            } else if (status & 0x20) {
+                write("ERROR: ATA write failed (write fault).\n");
+            } else if (status & 0x40) {
+                write("ERROR: ATA write failed (seek error).\n");
+            }
+            write("ERROR: ATA write timeout after writing data.\n");
+            return;
+        }
+    }
+
+    status = inb(io + 7);
+    if (status & 0x01) {
+        write("ERROR: ATA write failed (post-write error).\n");
     }
 }

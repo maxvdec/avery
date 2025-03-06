@@ -322,3 +322,13 @@ int strfind(const str s, char c) {
     }
     return -1;
 }
+
+str strrchr(str s, char c) {
+    size len = strlen(s);
+    for (size i = len - 1; i >= 0; i--) {
+        if (s[i] == c) {
+            return s + i;
+        }
+    }
+    return NULL;
+}

@@ -498,70 +498,128 @@ str fat32_read_file(const str path) {
 }
 
 u32 fat32_create_directory(const str path) {
-    if (path[0] != '/') {
-        write("ERROR: Path must start with '/'\n");
+    write("Creating directory: ");
+    write(path);
+    write("\n");
+
+    if (!path || path[0] != '/') {
+        write("ERROR: Invalid path (must start with /)\n");
         return 0xFFFFFFFF;
     }
 
     char parent_path[256];
     char dir_name[12];
-    const char *last_slash = &path[strfind(path, '/')];
+    size len = strlen(path);
 
-    if (!last_slash || last_slash == path) {
-        write("ERROR: Invalid directory path\n");
+    while (len > 1 && path[len - 1] == '/') {
+        len--;
+    }
+
+    const char *current_path = path + 1;
+    const char *next_slash;
+    u32 parent_cluster = public_bpb.root_cluster;
+
+    while ((next_slash = strchr(current_path, '/')) != NULL) {
+        size component_len = next_slash - current_path;
+        if (component_len == 0) {
+            current_path = next_slash + 1;
+            continue;
+        }
+
+        strncpy(parent_path, current_path, component_len);
+        parent_path[component_len] = '\0';
+
+        parent_cluster = fat32_find_cluster(parent_path);
+        if (parent_cluster == 0xFFFFFFFF) {
+            write("ERROR: Parent directory not found\n");
+            return 0xFFFFFFFF;
+        }
+
+        current_path = next_slash + 1;
+    }
+
+    strncpy(dir_name, current_path, len);
+    dir_name[len] = '\0';
+
+    if (strlen(dir_name) == 0) {
+        write("ERROR: Invalid directory name\n");
         return 0xFFFFFFFF;
     }
 
-    strncpy(parent_path, path, last_slash - path);
-    parent_path[last_slash - path] = '\0';
-    strncpy(dir_name, last_slash + 1, 11);
-    dir_name[11] = '\0';
-
-    u32 parent_cluster = fat32_find_cluster(parent_path);
-    if (parent_cluster == 0xFFFFFFFF) {
-        write("ERROR: Parent directory not found\n");
-        return 0xFFFFFFFF;
-    }
-
-    fat32_file_t existing_dir = fat32_find_entry(parent_cluster, dir_name);
-    if (existing_dir.cluster != 0xFFFFFFFF) {
+    fat32_file_t existing = fat32_find_entry(parent_cluster, dir_name);
+    if (existing.cluster != 0xFFFFFFFF) {
         write("ERROR: Directory already exists\n");
         return 0xFFFFFFFF;
     }
 
-    u32 new_cluster = fat32_find_cluster("/");
+    u32 new_cluster = fat32_allocate_cluster();
     if (new_cluster == 0xFFFFFFFF) {
-        write("ERROR: Root directory not found\n");
+        write("ERROR: Failed to allocate cluster\n");
         return 0xFFFFFFFF;
     }
 
+    u8 buffer[512] = {0};
+    u32 lba = fat32_cluster_to_lba(new_cluster);
+
+    memset(buffer, ' ', 32);
+    strncpy((str)buffer, ".", 2);
+    buffer[0] = 0x10;
+    *((u32 *)&buffer[26]) = new_cluster;
+
+    memset(buffer + 32, ' ', 32);
+    strncpy((str)(buffer + 32), "..", 2);
+    buffer[32] = 0x10;
+    *((u32 *)&buffer[32 + 26]) = parent_cluster;
+
+    ata_write_sector(0, 0, lba, buffer);
+
+    u32 parent_lba = fat32_cluster_to_lba(parent_cluster);
+    u8 parent_buffer[512];
+    ata_read_sector(0, 0, parent_lba, parent_buffer);
+
+    for (size i = 0; i < 512; i += 32) {
+        u8 *entry = &parent_buffer[i];
+
+        if (entry[0] == 0x00 || entry[0] == 0xE5) {
+            memset(entry, ' ', 11);
+            strncpy((str)entry, dir_name, strlen(dir_name));
+            entry[11] = 0x10; // Directory entry attribute
+            *((u32 *)&entry[26]) =
+                new_cluster; // Set the cluster for the new directory
+
+            ata_write_sector(0, 0, parent_lba, parent_buffer);
+            return new_cluster; // Successfully created the directory
+        }
+    }
+
+    write("ERROR: Failed to create directory\n");
+    return 0xFFFFFFFF;
+}
+
+u32 fat32_cluster_to_lba(u32 cluster) {
+    return fat32_partition_lba +
+           (public_bpb.reserved_sectors +
+            (public_bpb.fat_count * public_bpb.sectors_per_fat) +
+            ((cluster - 2) * public_bpb.sectors_per_cluster));
+}
+
+u32 fat32_allocate_cluster() {
+    u32 fat_lba = fat32_partition_lba + public_bpb.reserved_sectors;
     u8 buffer[512];
-    u32 lba = fat32_partition_lba +
-              (public_bpb.reserved_sectors +
-               (public_bpb.fat_count * public_bpb.sectors_per_fat) +
-               ((new_cluster - 2) * public_bpb.sectors_per_cluster));
 
-    for (u32 i = 0; i < public_bpb.sectors_per_cluster; i++) {
-        ata_read_sector(0, 0, lba + i, buffer);
+    for (u32 i = 0; i < public_bpb.sectors_per_fat; i++) {
+        ata_read_sector(0, 0, fat_lba + i, buffer);
 
-        for (int j = 0; j < 512; j += 32) {
-            u8 *entry = &buffer[j];
-
-            if (entry[0] == 0x00 || entry[0] == 0xE5) {
-                for (int k = 0; k < 11; k++) {
-                    entry[k] = ' ';
-                }
-
-                strncpy((str)entry, dir_name, strlen(dir_name));
-                entry[11] = 0x10;
-
-                ata_write_sector(0, 0, lba + i, buffer);
-
-                return new_cluster;
+        for (u32 j = 0; j < 512; j += 4) {
+            u32 value = *((u32 *)&buffer[j]);
+            if (value == 0) {
+                *((u32 *)&buffer[j]) = 0x0FFFFFF8;
+                ata_write_sector(0, 0, fat_lba + i, buffer);
+                return i * 512 + j;
             }
         }
     }
 
-    write("ERROR: Directory could not be created\n");
+    write("No clusters available\n");
     return 0xFFFFFFFF;
 }

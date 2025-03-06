@@ -69,6 +69,7 @@ str strncpy(str dest, const str src, size count);
 bool ends_with(const str s, char c);
 bool contains(const str s, char c);
 int strfind(const str s, char c);
+str strrchr(str s, char c);
 
 void list_dir(const str path);
 bool dir_exists(const str path);
