@@ -1,0 +1,8 @@
+.cache
+build/
+iso/
+.clang-format
+disk.img 
+compile_commands.json
+avery.iso 
+test.txt
