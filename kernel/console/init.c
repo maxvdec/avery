@@ -38,6 +38,11 @@ void init_console() {
                         }
                     }
                 }
+
+                size len = strlen(current_dir);
+                if (current_dir[len - 1] == '/' && len > 1) {
+                    current_dir[len - 1] = 0;
+                }
                 continue;
             } else if (strncmp(path, ".", 1) == 0) {
                 continue;
@@ -50,8 +55,10 @@ void init_console() {
                 continue;
             } else if (path[0] == '/') {
                 strncpy(current_dir, path, MAX_PATH_LENGTH);
+            } else if (strncmp(current_dir, "/", 1) == 0) {
+                current_dir = concat(concat(current_dir, ""), path);
             } else {
-                current_dir = concat(current_dir, path);
+                current_dir = concat(concat(current_dir, "/"), path);
             }
 
             if (!dir_exists(current_dir)) {
@@ -81,8 +88,10 @@ void init_console() {
                 dir = "/";
             } else if (dir[0] == '/') {
                 strncpy(dir, dir, MAX_PATH_LENGTH);
+            } else if (strncmp(current_dir, "/", 1) == 0) {
+                dir = concat(concat(current_dir, ""), dir);
             } else {
-                dir = concat(current_dir, dir);
+                dir = concat(concat(current_dir, "/"), dir);
             }
 
             toupper(dir);
@@ -91,6 +100,27 @@ void init_console() {
                 write("ERROR: Directory already exists\n");
             } else {
                 create_dir(dir);
+            }
+        } else if (strncmp(input, "new", 3) == 0) {
+            str file = input + 4;
+            if (file[0] == '.' && file[1] == '/') {
+                file = concat(current_dir, file + 2);
+            } else if (strncmp(file, "/", 1) == 0) {
+                file = "/";
+            } else if (file[0] == '/') {
+                strncpy(file, file, MAX_PATH_LENGTH);
+            } else if (strncmp(current_dir, "/", 1) == 0) {
+                file = concat(concat(current_dir, ""), file);
+            } else {
+                file = concat(concat(current_dir, "/"), file);
+            }
+
+            toupper(file);
+
+            if (file_exists(file)) {
+                write("ERROR: File already exists\n");
+            } else {
+                create_file(file);
             }
         } else if (strncmp(input, "exists? -d", 10) == 0) {
             str dir = input + 11;
@@ -101,8 +131,10 @@ void init_console() {
                 continue;
             } else if (dir[0] == '/') {
                 strncpy(dir, dir, MAX_PATH_LENGTH);
+            } else if (strncmp(current_dir, "/", 1) == 0) {
+                dir = concat(concat(current_dir, ""), dir);
             } else {
-                dir = concat(current_dir, dir);
+                dir = concat(concat(current_dir, "/"), dir);
             }
 
             if (!dir_exists(dir)) {
@@ -122,8 +154,10 @@ void init_console() {
                 file = "/";
             } else if (file[0] == '/') {
                 strncpy(file, file, MAX_PATH_LENGTH);
+            } else if (strncmp(current_dir, "/", 1) == 0) {
+                file = concat(concat(current_dir, ""), file);
             } else {
-                file = concat(current_dir, file);
+                file = concat(concat(current_dir, "/"), file);
             }
 
             toupper(file);
@@ -142,8 +176,10 @@ void init_console() {
                 file = "/";
             } else if (file[0] == '/') {
                 strncpy(file, file, MAX_PATH_LENGTH);
+            } else if (strncmp(current_dir, "/", 1) == 0) {
+                file = concat(concat(current_dir, ""), file);
             } else {
-                file = concat(current_dir, file);
+                file = concat(concat(current_dir, "/"), file);
             }
 
             toupper(file);
@@ -166,8 +202,10 @@ void init_console() {
                 file = "/";
             } else if (file[0] == '/') {
                 strncpy(file, file, MAX_PATH_LENGTH);
+            } else if (strncmp(current_dir, "/", 1) == 0) {
+                file = concat(concat(current_dir, ""), file);
             } else {
-                file = concat(current_dir, file);
+                file = concat(concat(current_dir, "/"), file);
             }
 
             toupper(file);
@@ -178,6 +216,8 @@ void init_console() {
             } else {
                 write(content);
             }
+        } else if (strncmp(input, "write", 5) == 0) {
+            write_command(input);
         } else if (strncmp(input, "help", 4) == 0) {
             write("Available commands:\n");
             write("ls - List directory contents\n");
@@ -192,6 +232,49 @@ void init_console() {
             if (strlen(input) > 0) {
                 write("Unknown command\n");
             }
+        }
+    }
+}
+
+void write_command(str command) {
+    str rest = command + 6;
+    bool to_file = strcontains(rest, "to");
+    if (!to_file) {
+        size len = strlen(rest);
+        if (rest[len - 1] == '"' && rest[0] == '"') {
+            rest[len - 1] = 0;
+            rest++;
+        }
+        write(rest);
+        write("\n");
+    } else {
+        size len = strfind(rest, 't') - 1;
+        str file = rest + len + 4;
+        str contents = rest;
+        if (contents[len - 1] == '"' && contents[0] == '"') {
+            contents[len - 1] = 0;
+            contents++;
+        }
+
+        if (file[0] == '.' && file[1] == '/') {
+            file = concat(current_dir, file + 2);
+        } else if (strncmp(file, "/", 1) == 0) {
+            file = "/";
+        } else if (file[0] == '/') {
+            strncpy(file, file, MAX_PATH_LENGTH);
+        } else if (strncmp(current_dir, "/", 1) == 0) {
+            file = concat(concat(current_dir, ""), file);
+        } else {
+            file = concat(concat(current_dir, "/"), file);
+        }
+
+        toupper(file);
+
+        if (file_exists(file)) {
+            write_to_file(file, contents);
+        } else {
+            create_file(file);
+            write_to_file(file, contents);
         }
     }
 }

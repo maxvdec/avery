@@ -80,7 +80,10 @@ char *to_fat32_8dot3_format(str filename);
 str fat32_read_file(const str path);
 fat32_file_t fat32_find_file(const str path);
 u32 fat32_create_directory(const str path);
+u32 fat32_create_file(const str path);
 u32 fat32_cluster_to_lba(u32 cluster);
 u32 fat32_allocate_cluster();
+void fat32_write_to_file(const str path, const str contents);
+void fat32_set_fat_entry(u32 cluster, u32 next_cluster);
 
 #endif // _FAT32_H

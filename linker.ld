@@ -5,8 +5,8 @@ ENTRY(_start)
 SECTIONS {
     . = 1M;  /* Load kernel at 1MB */
     
-    .multiboot ALIGN(4K) : {
-        *(.multiboot)
+    .multiboot2 ALIGN(4K) : {
+        *(.multiboot2)
     }
 
     .text ALIGN(4K) : {

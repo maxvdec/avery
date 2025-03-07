@@ -89,6 +89,7 @@ u32 fat32_get_next_cluster(u32 cluster) {
 }
 
 void fat32_list_cluster(u32 cluster) {
+
     u8 buffer[512];
     char filename[256];
 
@@ -114,6 +115,10 @@ void fat32_list_cluster(u32 cluster) {
                 }
 
                 if (entry[0] == 0xE5) {
+                    continue;
+                }
+
+                if (entry[0] == 0x08) {
                     continue;
                 }
 
@@ -365,6 +370,7 @@ void fat32_format_filename(str filename, bool is_directory) {
     if (is_directory) {
         return;
     }
+
     char name[9];
     char extension[4];
 
@@ -379,7 +385,6 @@ void fat32_format_filename(str filename, bool is_directory) {
     extension[3] = '\0';
 
     trim(name);
-    trim(extension);
 
     int i = 0;
     while (name[i] != '\0') {
@@ -387,7 +392,7 @@ void fat32_format_filename(str filename, bool is_directory) {
         i++;
     }
 
-    if (extension[0] != '\0') {
+    if (extension[0] != ' ') {
         filename[i++] = '.';
         int j = 0;
         while (extension[j] != '\0') {
@@ -529,7 +534,7 @@ u32 fat32_create_directory(const str path) {
         strncpy(parent_path, current_path, component_len);
         parent_path[component_len] = '\0';
 
-        parent_cluster = fat32_find_cluster(parent_path);
+        parent_cluster = fat32_find_cluster(concat("/", parent_path));
         if (parent_cluster == 0xFFFFFFFF) {
             write("ERROR: Parent directory not found\n");
             return 0xFFFFFFFF;
@@ -583,16 +588,116 @@ u32 fat32_create_directory(const str path) {
         if (entry[0] == 0x00 || entry[0] == 0xE5) {
             memset(entry, ' ', 11);
             strncpy((str)entry, dir_name, strlen(dir_name));
-            entry[11] = 0x10; // Directory entry attribute
-            *((u32 *)&entry[26]) =
-                new_cluster; // Set the cluster for the new directory
+            entry[11] = 0x10;
+            *((u32 *)&entry[26]) = new_cluster;
 
             ata_write_sector(0, 0, parent_lba, parent_buffer);
-            return new_cluster; // Successfully created the directory
+            return new_cluster;
         }
     }
 
     write("ERROR: Failed to create directory\n");
+    return 0xFFFFFFFF;
+}
+
+u32 fat32_create_file(const str path) {
+    write("Creating file: ");
+    write(path);
+    write("\n");
+
+    if (!path || path[0] != '/') {
+        write("ERROR: Invalid path (must start with /)\n");
+        return 0xFFFFFFFF;
+    }
+
+    char parent_path[256];
+    char file_name[12];
+    size len = strlen(path);
+
+    while (len > 1 && path[len - 1] == '/') {
+        len--;
+    }
+
+    const char *current_path = path + 1;
+    const char *next_slash;
+    u32 parent_cluster = public_bpb.root_cluster;
+
+    // Traverse path components to find the parent directory
+    while ((next_slash = strchr(current_path, '/')) != NULL) {
+        size component_len = next_slash - current_path;
+        if (component_len == 0) {
+            current_path = next_slash + 1;
+            continue;
+        }
+
+        strncpy(parent_path, current_path, component_len);
+        parent_path[component_len] = '\0';
+
+        parent_cluster = fat32_find_cluster(concat("/", parent_path));
+        if (parent_cluster == 0xFFFFFFFF) {
+            write("ERROR: Parent directory not found\n");
+            return 0xFFFFFFFF;
+        }
+
+        current_path = next_slash + 1;
+    }
+
+    // Extract the file name
+    strncpy(file_name, current_path, len);
+    file_name[len] = '\0';
+
+    if (strlen(file_name) == 0) {
+        write("ERROR: Invalid file name\n");
+        return 0xFFFFFFFF;
+    }
+
+    // Check if the file already exists
+    fat32_file_t existing = fat32_find_entry(parent_cluster, file_name);
+    if (existing.cluster != 0xFFFFFFFF) {
+        write("ERROR: File already exists\n");
+        return 0xFFFFFFFF;
+    }
+
+    // Allocate a new cluster for the file
+    u32 new_cluster = fat32_allocate_cluster();
+    if (new_cluster == 0xFFFFFFFF) {
+        write("ERROR: Failed to allocate cluster\n");
+        return 0xFFFFFFFF;
+    }
+
+    u8 buffer[512] = {0};
+    u32 lba = fat32_cluster_to_lba(new_cluster);
+
+    // Set up the file entry with basic information
+    memset(buffer, ' ', 32);
+    strncpy((str)buffer, file_name, strlen(file_name));
+    buffer[11] = 0x20;                   // File entry attribute (regular file)
+    *((u32 *)&buffer[26]) = new_cluster; // Set the cluster for the file
+
+    // Write the file entry to the disk
+    ata_write_sector(0, 0, lba, buffer);
+
+    // Now update the parent directory with the new file entry
+    u32 parent_lba = fat32_cluster_to_lba(parent_cluster);
+    u8 parent_buffer[512];
+    ata_read_sector(0, 0, parent_lba, parent_buffer);
+
+    for (size i = 0; i < 512; i += 32) {
+        u8 *entry = &parent_buffer[i];
+
+        if (entry[0] == 0x00 || entry[0] == 0xE5) {
+            memset(entry, ' ', 11);
+            strncpy((str)entry, file_name, strlen(file_name));
+            entry[11] = 0x20; // File entry attribute
+            *((u32 *)&entry[26]) =
+                new_cluster; // Set the cluster for the new file
+
+            ata_write_sector(0, 0, parent_lba, parent_buffer);
+            return new_cluster; // Successfully created the file
+        }
+    }
+
+    write("ERROR: Failed to create file\n");
     return 0xFFFFFFFF;
 }
 
@@ -622,4 +727,111 @@ u32 fat32_allocate_cluster() {
 
     write("No clusters available\n");
     return 0xFFFFFFFF;
+}
+
+void fat32_write_to_file(const str path, const str contents) {
+    write("Writing to file: ");
+    write(path);
+    write("\n");
+
+    if (!path || path[0] != '/') {
+        write("ERROR: Invalid path (must start with /)\n");
+        return;
+    }
+
+    char parent_path[256];
+    char file_name[12];
+    size len = strlen(path);
+
+    while (len > 1 && path[len - 1] == '/') {
+        len--;
+    }
+
+    const char *current_path = path + 1;
+    const char *next_slash;
+    u32 parent_cluster = public_bpb.root_cluster;
+
+    while ((next_slash = strchr(current_path, '/')) != NULL) {
+        size component_len = next_slash - current_path;
+        if (component_len == 0) {
+            current_path = next_slash + 1;
+            continue;
+        }
+
+        strncpy(parent_path, current_path, component_len);
+        parent_path[component_len] = '\0';
+
+        parent_cluster = fat32_find_cluster(parent_path);
+        if (parent_cluster == 0xFFFFFFFF) {
+            write("ERROR: Parent directory not found\n");
+            return;
+        }
+
+        current_path = next_slash + 1;
+    }
+
+    strncpy(file_name, current_path, len - (current_path - path));
+    file_name[len - (current_path - path)] = '\0';
+
+    if (strlen(file_name) == 0) {
+        write("ERROR: Invalid file name\n");
+        return;
+    }
+
+    fat32_file_t file_entry = fat32_find_entry(parent_cluster, file_name);
+    u32 current_cluster = 0;
+
+    if (file_entry.cluster == 0xFFFFFFFF) {
+        write("File not found, creating new file...\n");
+    } else {
+        current_cluster = file_entry.cluster;
+    }
+
+    size content_len = strlen(contents);
+    size data_written = 0;
+
+    while (data_written < content_len) {
+        u32 lba = fat32_cluster_to_lba(current_cluster);
+        u8 buffer[512] = {0};
+
+        size data_to_write = content_len - data_written;
+        if (data_to_write > 512) {
+            data_to_write = 512;
+        }
+
+        memcopy(buffer, contents + data_written, data_to_write);
+
+        ata_write_sector(0, 0, lba, buffer);
+        data_written += data_to_write;
+
+        if (data_written < content_len) {
+            u32 next_cluster = fat32_allocate_cluster();
+            if (next_cluster == 0xFFFFFFFF) {
+                write("ERROR: Failed to allocate next cluster\n");
+                return;
+            }
+
+            fat32_set_fat_entry(current_cluster, next_cluster);
+            current_cluster = next_cluster;
+        }
+    }
+
+    fat32_set_fat_entry(current_cluster, 0x0FFFFFFF);
+
+    write("Successfully wrote to the file\n");
+}
+
+void fat32_set_fat_entry(u32 cluster, u32 next_cluster) {
+    u32 fat_start = fat32_partition_lba + public_bpb.reserved_sectors;
+    u32 fat_entry_offset = cluster * 4;
+
+    u32 fat_sector = fat_start + (fat_entry_offset / 512);
+    u32 entry_offset_in_sector = fat_entry_offset % 512;
+
+    u8 fat_buffer[512];
+    ata_read_sector(0, 0, fat_sector, fat_buffer);
+
+    *((u32 *)&fat_buffer[entry_offset_in_sector]) = next_cluster;
+
+    ata_write_sector(0, 0, fat_sector, fat_buffer);
 }

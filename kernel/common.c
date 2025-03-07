@@ -277,6 +277,16 @@ bool create_dir(const str path) {
     return cluster != 0xFFFFFFFF;
 }
 
+bool create_file(const str path) {
+    u32 cluster = fat32_create_file(path);
+    return cluster != 0xFFFFFFFF;
+}
+
+bool write_to_file(const str path, const str contents) {
+    fat32_write_to_file(path, contents);
+    return true;
+}
+
 str strchr(str s, int c) {
     for (size i = 0; s[i] != '\0'; i++) {
         if (s[i] == c) {
@@ -331,4 +341,26 @@ str strrchr(str s, char c) {
         }
     }
     return NULL;
+}
+
+bool strcontains(const str s, const str chain) {
+    size len = strlen(s);
+    size chain_len = strlen(chain);
+
+    for (size i = 0; i < len; i++) {
+        if (s[i] == chain[0]) {
+            bool found = true;
+            for (size j = 1; j < chain_len; j++) {
+                if (s[i + j] != chain[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }

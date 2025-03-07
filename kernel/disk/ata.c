@@ -106,7 +106,7 @@ void ata_write_sector(u8 bus, u8 drive, u32 lba, u8 *buffer) {
     }
 
     timeout = 10000;
-    while (!(inb(io + 7) & 0x08)) {
+    while (inb(io + 7) & 0x80) {
         if (--timeout == 0) {
             status = inb(io + 7);
             if (status & 0x01) {
@@ -117,8 +117,9 @@ void ata_write_sector(u8 bus, u8 drive, u32 lba, u8 *buffer) {
                 write("ERROR: ATA write failed (write fault).\n");
             } else if (status & 0x40) {
                 write("ERROR: ATA write failed (seek error).\n");
+            } else {
+                write("ERROR: ATA write timeout after writing data.\n");
             }
-            write("ERROR: ATA write timeout after writing data.\n");
             return;
         }
     }

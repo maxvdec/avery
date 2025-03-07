@@ -11,28 +11,42 @@
 #include "common.h"
 #include "vga.h"
 
-void init_pmm(multiboot_info *mbi) {
+void init_pmm(u32 *mb_info) {
+    multiboot_tag *tag = (multiboot_tag *)(mb_info + 8);
 
-    if (!(mbi->flags & (1 << 6))) {
-        write("No valid memory_map\n");
-        return;
-    }
+    while (tag->type != 0) {
+        if (tag->type == 6) {
+            struct {
+                u32 type;
+                u32 size;
+                u32 entry_size;
+                u32 entry_version;
+                multiboot_mmap_entry entries[];
+            } *mmap = (void *)tag;
 
-    multiboot_mmap_entry *entry = (multiboot_mmap_entry *)mbi->mmap_addr;
-    u32 mmap_end = mbi->mmap_addr + mbi->mmap_length;
+            write("Memory Map:\n");
 
-    while ((u32)entry < mmap_end) {
-        u64 base = entry->addr;
-        u64 length = entry->len;
-        u32 type = entry->type;
+            multiboot_mmap_entry *entry = mmap->entries;
+            u32 mmap_end = (u32)tag + tag->size;
 
-        if (entry->size == 0 || entry->size > 0x100) {
-            write("Invalid memory entry size! Halting.\n");
-            break;
+            while ((u32)entry < mmap_end) {
+                u64 base = entry->addr;
+                u64 length = entry->len;
+                u32 type = entry->type;
+
+                write("Base: ");
+                write_hex(base);
+                write(" Length: ");
+                write_hex(length);
+                write(" Type: ");
+                write_hex(type);
+                write("\n");
+
+                entry = (multiboot_mmap_entry *)((u32)entry + mmap->entry_size);
+            }
         }
 
-        entry = (multiboot_mmap_entry *)((u32)entry + entry->size +
-                                         sizeof(entry->size));
+        tag = (multiboot_tag *)((u8 *)tag + ((tag->size + 7) & ~7));
     }
 }
 

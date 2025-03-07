@@ -70,11 +70,14 @@ bool ends_with(const str s, char c);
 bool contains(const str s, char c);
 int strfind(const str s, char c);
 str strrchr(str s, char c);
+bool strcontains(const str s, const str chain);
 
 void list_dir(const str path);
 bool dir_exists(const str path);
 bool file_exists(const str path);
 str read_file(const str path);
 bool create_dir(const str path);
+bool create_file(const str path);
+bool write_to_file(const str path, const str contents);
 
 #endif // _COMMON_H
