@@ -364,3 +364,32 @@ bool strcontains(const str s, const str chain) {
 
     return false;
 }
+
+void panic(const str message) {
+    set_text_color(RED, BLACK);
+    clear();
+    write("The Avery Kernel has encountered an exception\n");
+    write("Please, power off you computer until the problem is solved.\n");
+    write("The system state has been saved to the disk.\n");
+    write("Please, contact the system administrator.\n\n");
+    write("Error: ");
+    write(message);
+    write("\n\n");
+    while (true)
+        ;
+}
+
+void boot_panic(const str message) {
+    set_text_color(WHITE, MAGENTA);
+    clear();
+    write("The Avery Kernel has encountered an exception when booting.\n");
+    write("This is a exceptional error and the system cannot continue.\n");
+    write("To continue, you must restart the computer and revise your Avery "
+          "installation.\n\n");
+    write("TL;DR: You're fucked up\n\n");
+    write("Error: ");
+    write(message);
+    write("\n\n");
+    while (true)
+        ;
+}

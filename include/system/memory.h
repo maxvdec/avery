@@ -20,10 +20,25 @@ typedef struct multiboot_mmap_entry {
     u32 type;
 } __attribute__((packed)) multiboot_mmap_entry;
 
-typedef struct multiboot_tag {
-    u32 type;
-    u32 size;
-} __attribute__((packed)) multiboot_tag;
+typedef struct multiboot_info {
+    u32 flags;
+    u32 mem_lower;
+    u32 mem_upper;
+    u32 boot_device;
+    u32 cmdline;
+    u32 mods_count;
+    u32 mods_addr;
+    u8 syms[16];
+    u32 mmap_length;
+    u32 mmap_addr;
+
+    u32 vbe_control_info;
+    u32 vbe_mode_info;
+    u16 vbe_mode;
+    u16 vbe_interface_seg;
+    u16 vbe_interface_off;
+    u16 vbe_interface_len;
+} __attribute__((packed)) multiboot_info;
 
 #define PAGE_SIZE 4096
 #define MEMORY_SIZE_MB 128
@@ -32,7 +47,7 @@ typedef struct multiboot_tag {
 
 static u32 memory_bitmap[BITMAP_SIZE] = {0};
 
-void init_pmm(u32 *mbi);
+void init_pmm(multiboot_info *mbi);
 void *pmm_alloc();
 void pmm_free(void *ptr);
 

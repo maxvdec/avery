@@ -80,4 +80,7 @@ bool create_dir(const str path);
 bool create_file(const str path);
 bool write_to_file(const str path, const str contents);
 
+void panic(const str message);
+void boot_panic(const str message);
+
 #endif // _COMMON_H
