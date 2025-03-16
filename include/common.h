@@ -85,4 +85,6 @@ bool write_to_file(const str path, const str contents);
 void panic(const str message);
 void boot_panic(const str message);
 
+void execute(u8 *raw_code);
+
 #endif // _COMMON_H

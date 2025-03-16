@@ -107,7 +107,7 @@ void fat32_list_cluster(u32 cluster) {
 
             int lfn_index = -1;
 
-            for (int j = 0; j < 512; j += 32) {
+            for (int j = 32; j < 512; j += 32) {
                 u8 *entry = &buffer[j];
 
                 if (entry[0] == 0x00) {
@@ -834,4 +834,30 @@ void fat32_set_fat_entry(u32 cluster, u32 next_cluster) {
     *((u32 *)&fat_buffer[entry_offset_in_sector]) = next_cluster;
 
     ata_write_sector(0, 0, fat_sector, fat_buffer);
+}
+
+void fat32_erase_disk() {
+    for (u32 cluster = 2;
+         cluster < fat32_partition_lba + public_bpb.total_sectors_32;
+         cluster++) {
+        write("Erasing cluster ");
+        write_hex(cluster);
+        write(" out of ");
+        write_hex(fat32_partition_lba + public_bpb.total_sectors_32);
+        csr_x = 0;
+        move_csr();
+        fat32_set_fat_entry(cluster, 0x000000);
+    }
+    write("Set all FAT entries to 0\n");
+
+    u32 root_cluster = public_bpb.root_cluster;
+    fat32_file_t entry;
+    while ((entry = fat32_find_entry(root_cluster, NULL)).size != 0) {
+        fat32_set_fat_entry(entry.cluster, 0x00000000);
+    }
+    write("Erased all files\n");
+
+    memset((u8 *)&public_bpb, 0, sizeof(fat32_bpb_t));
+    fat32_read_boot_sector();
+    write("Erased disk\n");
 }

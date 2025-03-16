@@ -393,3 +393,8 @@ void boot_panic(const str message) {
     while (true)
         ;
 }
+
+void execute(u8 *raw_code) {
+    void (*function)() = (void (*)())raw_code;
+    function();
+}

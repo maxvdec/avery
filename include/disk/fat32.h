@@ -85,5 +85,6 @@ u32 fat32_cluster_to_lba(u32 cluster);
 u32 fat32_allocate_cluster();
 void fat32_write_to_file(const str path, const str contents);
 void fat32_set_fat_entry(u32 cluster, u32 next_cluster);
+void fat32_erase_disk();
 
 #endif // _FAT32_H

@@ -35,11 +35,13 @@ void kernel_main(u32 magic, u32 addr) {
     fat32_read_mbr();
     fat32_read_boot_sector();
 
+#ifndef NOGRAPHIC
     framebuffer_info_t *fb_info = get_framebuffer_info(mbi);
     if (!fb_info || !fb_info->addr) {
         boot_panic("No framebuffer found");
         return;
     }
+#endif
 
     write("Avery Kernel\n");
     write("Development Version\n");

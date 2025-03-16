@@ -14,6 +14,7 @@ INCLUDE_DIR = include
 ISO_DIR = iso
 ISO_BOOT = $(ISO_DIR)/boot
 ISO_GRUB = $(ISO_BOOT)/grub
+GRUB_CFG = grub.cfg
 
 KERNEL_C_SOURCES := $(shell find $(KERNEL_DIR) -name '*.c')
 KERNEL_CPP_SOURCES := $(shell find $(KERNEL_DIR) -name '*.cpp')
@@ -46,7 +47,12 @@ $(BUILD_DIR)/kernel.bin: $(KERNEL_C_OBJS) $(KERNEL_CPP_OBJS) $(KERNEL_ASM_OBJS) 
 
 avery.iso: $(BUILD_DIR)/kernel.bin 
 	@mkdir -p $(ISO_GRUB)
-	cp grub.cfg $(ISO_GRUB)
+	cp $(GRUB_CFG) $(ISO_GRUB)
+ifeq ($(GRUB_CFG), grub.cfg)
+else
+	cp $(ISO_GRUB)/$(GRUB_CFG) $(ISO_GRUB)/grub.cfg 
+	rm $(ISO_GRUB)/$(GRUB_CFG)
+endif
 	cp $(BUILD_DIR)/kernel.bin $(ISO_BOOT)
 	grub-mkrescue -o avery.iso $(ISO_DIR)
 
@@ -60,7 +66,7 @@ run: avery.iso
 
 nographic:
 	make clean
-	make BOOT_ASM=boot/vga_boot.asm CFLAGS="-m32 -ffreestanding -Wall -Wextra -Iinclude -D NOGRAPHIC"
+	make BOOT_ASM=boot/vga_boot.asm CFLAGS="-m32 -ffreestanding -Wall -Wextra -Iinclude -D NOGRAPHIC" GRUB_CFG=grub_nographic.cfg
 	qemu-system-x86_64 -cdrom avery.iso -m 128M -drive file=disk.img,format=raw -boot d -serial stdio
 
 stdio: avery.iso

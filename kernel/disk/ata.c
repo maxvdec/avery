@@ -89,14 +89,14 @@ void ata_write_sector(u8 bus, u8 drive, u32 lba, u8 *buffer) {
     u32 timeout = 10000;
     while (!(inb(io + 7) & 0x08)) {
         if (--timeout == 0) {
-            write("ERROR: ATA write timeout.\n");
+            panic("ERROR: ATA write timeout.\n");
             return;
         }
     }
 
     u8 status = inb(io + 7);
     if (status & 0x01) {
-        write("ERROR: ATA write failed (status error).\n");
+        panic("ERROR: ATA write failed (status error).\n");
         return;
     }
 
@@ -127,5 +127,54 @@ void ata_write_sector(u8 bus, u8 drive, u32 lba, u8 *buffer) {
     status = inb(io + 7);
     if (status & 0x01) {
         write("ERROR: ATA write failed (post-write error).\n");
+    }
+}
+
+int drive_count = 0;
+DriveInfo drives[MAX_DRIVES];
+
+void ata_scan_drives() {
+    drive_count = 0;
+    char label = 'A';
+
+    for (u8 bus = 0; bus < 2; bus++) {
+        for (u8 drive = 0; drive < 2; drive++) {
+            if (ata_detect(bus, drive)) {
+                if (drive_count < MAX_DRIVES) {
+                    drives[drive_count].label = label;
+                    drives[drive_count].bus = bus;
+                    drives[drive_count].drive = drive;
+                    ata_check_format(bus, drive, drives[drive_count].format);
+                    drive_count++;
+
+                    if (label < 'Z') {
+                        label++;
+                    }
+                }
+            }
+        }
+    }
+}
+
+DriveInfo *get_connected_drives(int *count) {
+    *count = drive_count;
+    return drives;
+}
+
+void ata_check_format(u8 bus, u8 drive, char *format) {
+    u16 buffer[256];
+    if (ata_identify(bus, drive, buffer)) {
+        u16 fs_type = buffer[54];
+        if (fs_type & 0x4000) {
+            strncpy(format, "FAT32", 5);
+        } else if (fs_type & 0x2000) {
+            strncpy(format, "FAT16", 5);
+        } else if (fs_type & 0x1000) {
+            strncpy(format, "FAT12", 5);
+        } else {
+            strncpy(format, "Unknown", 8);
+        }
+    } else {
+        strncpy(format, "None", 4);
     }
 }

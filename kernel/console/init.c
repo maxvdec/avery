@@ -172,11 +172,11 @@ void init_console() {
             str file = input + 10;
             if (file[0] == '.' && file[1] == '/') {
                 file = concat(current_dir, file + 2);
-            } else if (strncmp(file, "/", 1) == 0) {
+            } else if (strncmp(file, "/", 1) == 0 && strlen(file) == 1) {
                 file = "/";
             } else if (file[0] == '/') {
-                strncpy(file, file, MAX_PATH_LENGTH);
-            } else if (strncmp(current_dir, "/", 1) == 0) {
+            } else if (strncmp(current_dir, "/", 1) == 0 &&
+                       strlen(current_dir) == 1) {
                 file = concat(concat(current_dir, ""), file);
             } else {
                 file = concat(concat(current_dir, "/"), file);
@@ -194,21 +194,47 @@ void init_console() {
                 }
                 write("\n");
             }
-        } else if (strncmp(input, "read", 4) == 0) {
+        } else if (strncmp(input, "exec", 4) == 0) {
             str file = input + 5;
             if (file[0] == '.' && file[1] == '/') {
                 file = concat(current_dir, file + 2);
-            } else if (strncmp(file, "/", 1) == 0) {
+            } else if (strncmp(file, "/", 1) == 0 && strlen(file) == 1) {
                 file = "/";
             } else if (file[0] == '/') {
-                strncpy(file, file, MAX_PATH_LENGTH);
-            } else if (strncmp(current_dir, "/", 1) == 0) {
+            } else if (strncmp(current_dir, "/", 1) == 0 &&
+                       strlen(current_dir) == 1) {
                 file = concat(concat(current_dir, ""), file);
             } else {
                 file = concat(concat(current_dir, "/"), file);
             }
 
             toupper(file);
+
+            str content = read_file(file);
+            if (content == NULL) {
+                write("ERROR: File not found\n");
+            } else {
+                execute((u8 *)content);
+            }
+        } else if (strncmp(input, "read", 4) == 0) {
+            str file = input + 5;
+            if (file[0] == '.' && file[1] == '/') {
+                file = concat(current_dir, file + 2);
+            } else if (strncmp(file, "/", 1) == 0 && strlen(file) == 1) {
+                file = "/";
+            } else if (file[0] == '/') {
+                strncpy(file, file, MAX_PATH_LENGTH);
+            } else if (strncmp(current_dir, "/", 1) == 0 &&
+                       strlen(current_dir) == 1) {
+                file = concat(concat(current_dir, ""), file);
+            } else {
+                file = concat(concat(current_dir, "/"), file);
+            }
+
+            toupper(file);
+            write("Reading: ");
+            write(file);
+            write("\n");
 
             str content = read_file(file);
             if (content == NULL) {
@@ -228,6 +254,9 @@ void init_console() {
             write("exists? - Check if a file exists\n");
             write("read - Read file contents\n");
             write("help - Display this help message\n");
+        } else if (strncmp(input, "disk", 4) == 0) {
+            str rest = input + 5;
+            disk_utility(rest);
         } else {
             if (strlen(input) > 0) {
                 write("Unknown command\n");
@@ -274,7 +303,6 @@ void write_command(str command) {
             write_to_file(file, contents);
         } else {
             create_file(file);
-            write_to_file(file, contents);
         }
     }
 }

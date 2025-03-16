@@ -15,5 +15,6 @@
 extern str current_dir;
 void init_console();
 void write_command(str command);
+void disk_utility(str command);
 
 #endif // _CONSOLE_H
