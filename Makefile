@@ -9,7 +9,7 @@ LDFLAGS = -m elf_i386 -T linker.ld
 
 BUILD_DIR = build/obj
 KERNEL_DIR = kernel
-BOOT_DIR = boot
+BOOT_ASM = boot/boot.asm
 INCLUDE_DIR = include
 ISO_DIR = iso
 ISO_BOOT = $(ISO_DIR)/boot
@@ -37,7 +37,7 @@ $(BUILD_DIR)/%.o: $(KERNEL_DIR)/%.asm
 	@mkdir -p $(dir $@)
 	$(AS) -f elf32 $< -o $@
 
-$(BOOT_OBJ): $(BOOT_DIR)/boot.asm 
+$(BOOT_OBJ): $(BOOT_ASM) 
 	@mkdir -p $(dir $@)
 	$(AS) -f elf32 $< -o $@
 
@@ -56,11 +56,16 @@ clean:
 .PHONY: all clean run stdio terminal
 
 run: avery.iso 
-	qemu-system-x86_64 -cdrom avery.iso -m 128M -drive file=disk.img,format=raw -boot d
+	qemu-system-x86_64 -cdrom avery.iso -m 128M -drive file=disk.img,format=raw -boot d -serial stdio 
+
+nographic:
+	make clean
+	make BOOT_ASM=boot/vga_boot.asm CFLAGS="-m32 -ffreestanding -Wall -Wextra -Iinclude -D NOGRAPHIC"
+	qemu-system-x86_64 -cdrom avery.iso -m 128M -drive file=disk.img,format=raw -boot d -serial stdio
 
 stdio: avery.iso
 	qemu-system-x86_64 -cdrom avery.iso -m 128M -monitor stdio -drive file=disk.img,format=raw -boot d
 
 terminal: avery.iso
-	qemu-system-x86_64 -cdrom avery.iso -m 128M -drive file=disk.img,format=raw -boot d -nographic
+	qemu-system-x86_64 -cdrom avery.iso -m 128M -serial stdio -drive file=disk.img,format=raw -boot d -nographic
 

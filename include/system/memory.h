@@ -11,43 +11,32 @@
 #define _MEMORY_H
 
 #include "common.h"
+#include "multiboot2.h"
 
 // === Physical Memory Management ===
-typedef struct multiboot_mmap_entry {
+typedef struct multiboot2_mmap_entry {
     u32 size;
     u64 addr;
     u64 len;
     u32 type;
-} __attribute__((packed)) multiboot_mmap_entry;
+} __attribute__((packed)) multiboot2_mmap_entry;
 
-typedef struct multiboot_info {
-    u32 flags;
-    u32 mem_lower;
-    u32 mem_upper;
-    u32 boot_device;
-    u32 cmdline;
-    u32 mods_count;
-    u32 mods_addr;
-    u8 syms[16];
-    u32 mmap_length;
-    u32 mmap_addr;
-
-    u32 vbe_control_info;
-    u32 vbe_mode_info;
-    u16 vbe_mode;
-    u16 vbe_interface_seg;
-    u16 vbe_interface_off;
-    u16 vbe_interface_len;
-} __attribute__((packed)) multiboot_info;
+typedef struct multiboot2_tag_mmap {
+    u32 type;
+    u32 size;
+    u32 entry_size;
+    u32 entry_version;
+    multiboot2_mmap_entry entries[];
+} __attribute__((packed)) multiboot2_tag_mmap;
 
 #define PAGE_SIZE 4096
-#define MEMORY_SIZE_MB 128
-#define MAX_FRAMES (MEMORY_SIZE_MB * 1024 * 1024 / PAGE_SIZE)
+#define MEMORY_SIZE_MB 1024
+#define MAX_FRAMES (MEMORY_SIZE_MB * 1024 * 1024 / 4)
 #define BITMAP_SIZE (MAX_FRAMES / 32)
 
 static u32 memory_bitmap[BITMAP_SIZE] = {0};
 
-void init_pmm(multiboot_info *mbi);
+void init_pmm(multiboot2_info_t *mbi);
 void *pmm_alloc();
 void pmm_free(void *ptr);
 
@@ -64,7 +53,7 @@ static inline void clear_frame(u32 frame) {
 #define PAGE_WRITABLE 0x2
 #define PAGE_SIZE_4MB 0x80
 
-#define KERNEL_MEMORY_LIMIT_MB 64
+#define KERNEL_MEMORY_LIMIT_MB 1024
 
 extern u32 page_directory[1024] __attribute__((aligned(4096)));
 
@@ -83,5 +72,9 @@ void vmm_unmap_page(void *virt_addr);
 #define HEAP_END (HEAP_START + HEAP_SIZE)
 
 static void *heap_top = (void *)HEAP_START;
+
+// === Utilities ===
+void is_address_valid(void *addr);
+u64 get_highest_address();
 
 #endif // _MEMORY_H

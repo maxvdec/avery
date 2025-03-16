@@ -11,42 +11,40 @@
 #include "common.h"
 #include "vga.h"
 
-void init_pmm(multiboot_info *mbi) {
-    if (!(mbi->flags & (1 << 6))) {
-        write("No valid memory_map\n");
-        return;
-    }
+void init_pmm(multiboot2_info_t *mbi) {
+    multiboot2_tag_t *tag = (multiboot2_tag_t *)((uintptr_t)mbi + 8);
 
-    multiboot_mmap_entry *entry = (multiboot_mmap_entry *)mbi->mmap_addr;
-    u32 mmap_end = mbi->mmap_addr + mbi->mmap_length;
+    while (tag->type != 0) {
+        if (tag->type == 0xA) {
+            multiboot2_tag_mmap *mmap = (multiboot2_tag_mmap *)tag;
+            multiboot2_mmap_entry *entry = mmap->entries;
 
-    while ((u32)entry < mmap_end) {
-        u64 base = entry->addr;
-        u64 length = entry->len;
-        u32 type = entry->type;
+            uintptr_t mmap_end = (uintptr_t)tag + tag->size;
 
-        if (entry->size == 0 || entry->size > 0x100) {
-            write("Invalid memory entry size! Halting.\n");
-            break;
+            while ((uintptr_t)entry < mmap_end) {
+                if (mmap->entry_size == 0) {
+                    write("Invalid entry size in memory map!\n");
+                    return;
+                }
+
+                entry = (multiboot2_mmap_entry *)((uintptr_t)entry +
+                                                  mmap->entry_size);
+            }
+            return;
         }
 
-        entry = (multiboot_mmap_entry *)((u32)entry + entry->size +
-                                         sizeof(entry->size));
+        tag = (multiboot2_tag_t *)((uintptr_t)tag + ((tag->size + 7) & ~7));
     }
+
+    write("No valid memory map found!\n");
 }
 
 u32 page_directory[1024] __attribute__((aligned(4096)));
 
 void init_paging() {
-    u32 num_entries = KERNEL_MEMORY_LIMIT_MB / 4;
-
-    for (u32 i = 0; i < num_entries; i++) {
+    for (u32 i = 0; i < 1024; i++) {
         page_directory[i] =
             (i * 0x400000) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_SIZE_4MB;
-    }
-
-    for (u32 i = num_entries; i < 1024; i++) {
-        page_directory[i] = 0;
     }
 
     asm volatile("mov %0, %%cr3" ::"r"(page_directory));
@@ -86,10 +84,7 @@ void init_vmm() {
         page_directory[i] = 0;
     }
 
-    u32 num_entries =
-        (KERNEL_MEMORY_LIMIT_MB * 1024 * 1024) / 0x400000; // 4MB pages
-
-    for (u32 i = 0; i < num_entries; i++) {
+    for (u32 i = 0; i < 1024; i++) {
         page_directory[i] =
             (i * 0x400000) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_SIZE_4MB;
     }
@@ -155,4 +150,40 @@ void free(void *ptr) {
     clear_frame(frame);
 
     asm volatile("invlpg (%0)" ::"r"(addr) : "memory");
+}
+
+void is_address_valid(void *addr) {
+    u32 pd_index = (u32)addr >> 22;
+    u32 pt_index = ((u32)addr >> 12) & 0x3FF;
+
+    if (!(page_directory[pd_index] & PAGE_PRESENT)) {
+        write("Page directory entry not present\n");
+        return;
+    }
+
+    u32 *page_table = (u32 *)(page_directory[pd_index] & ~0xFFF);
+
+    if (!(page_table[pt_index] & PAGE_PRESENT)) {
+        write("Page table entry not present\n");
+        return;
+    }
+}
+
+u64 get_highest_address() {
+    u64 highest = 0;
+
+    for (size i = 0; i < MAX_FRAMES / 32; i++) {
+        if (memory_bitmap[i] != 0xFFFFFFFF) {
+            for (size j = 0; j < 32; j++) {
+                if (!(memory_bitmap[i] & (1 << j))) {
+                    u64 addr = (i * 32 + j) * PAGE_SIZE;
+                    if (addr > highest) {
+                        highest = addr;
+                    }
+                }
+            }
+        }
+    }
+
+    return highest;
 }

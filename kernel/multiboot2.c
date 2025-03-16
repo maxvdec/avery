@@ -9,36 +9,14 @@
 
 #include "multiboot2.h"
 #include "common.h"
-#include "vga.h"
 
 multiboot2_info_t *parse_multiboot2(u32 addr) {
-    multiboot2_info_t *info = (multiboot2_info_t *)addr;
+    multiboot2_info_t *mbi = (multiboot2_info_t *)addr;
 
-    if (info->total_size < sizeof(multiboot2_info_t)) {
-        write("Invalid Multiboot2 header size\n");
-        return NULL;
+    multiboot2_tag_t *tag = (multiboot2_tag_t *)(addr + 8);
+    while (tag->type != 0) {
+        tag = (multiboot2_tag_t *)((u32)tag + ((tag->size + 7) & ~7));
     }
 
-    write("Multiboot2 Header:\n");
-    write("Total size: ");
-    write_hex(info->total_size);
-    write("\n");
-    write("Tags Address: ");
-    write_hex(info->tags);
-    write("\n");
-
-    u32 tag_addr = info->tags;
-    while (tag_addr < addr + info->total_size) {
-        multiboot2_tag_t *tag = (multiboot2_tag_t *)tag_addr;
-
-        write("Tag Type: ");
-        write_hex(tag->type);
-        write(", Tag Size: ");
-        write_hex(tag->size);
-        write("\n");
-
-        tag_addr += tag->size;
-    }
-
-    return info;
+    return mbi;
 }

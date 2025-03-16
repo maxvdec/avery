@@ -15,14 +15,12 @@
 typedef struct multiboot2_tag {
     u32 type;
     u32 size;
-    u8 data[];
-} multiboot2_tag_t;
+} __attribute__((packed, aligned(8))) multiboot2_tag_t;
 
 typedef struct multiboot2_info {
     u32 total_size;
     u32 reserved;
-    u32 tags;
-} multiboot2_info_t;
+} __attribute__((packed)) multiboot2_info_t;
 
 #define MULTIBOOT2_TAG_TYPE_END 0
 #define MULTIBOOT2_TAG_TYPE_CMDLINE 1

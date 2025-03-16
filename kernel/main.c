@@ -3,7 +3,7 @@
 #include "console.h"
 #include "disk/fat32.h"
 #include "drivers/timer.h"
-#include "graphics/vbe.h"
+#include "graphics/framebuffer.h"
 #include "multiboot2.h"
 #include "system/gdt.h"
 #include "system/idt.h"
@@ -14,7 +14,7 @@
 
 #define MULTIBOOT2_HEADER_MAGIC 0x36d76289
 
-void kernel_main(u32 magic, u32 *addr) {
+void kernel_main(u32 magic, u32 addr) {
     // Initialize all systems
     init_vga();
     init_gdt();
@@ -25,17 +25,21 @@ void kernel_main(u32 magic, u32 *addr) {
         boot_panic("No multiboot information provided");
         return;
     }
-    write_hex(*addr);
-    return;
 
     init_timer();
 
-    multiboot2_info_t *mbi = parse_multiboot2(*addr);
-    init_pmm((multiboot_info *)mbi);
+    multiboot2_info_t *mbi = parse_multiboot2(addr);
+    init_pmm(mbi);
     init_paging();
     init_vmm();
     fat32_read_mbr();
     fat32_read_boot_sector();
+
+    framebuffer_info_t *fb_info = get_framebuffer_info(mbi);
+    if (!fb_info || !fb_info->addr) {
+        boot_panic("No framebuffer found");
+        return;
+    }
 
     write("Avery Kernel\n");
     write("Development Version\n");

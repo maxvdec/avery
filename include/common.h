@@ -20,6 +20,8 @@ typedef signed short i16;
 typedef signed int i32;
 typedef signed long long i64;
 
+typedef u32 uintptr_t;
+
 #define NULL ((void *)0)
 
 #define BUILD "dev0.0.1/2025"

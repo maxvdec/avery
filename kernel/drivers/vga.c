@@ -9,6 +9,7 @@
 
 #include "vga.h"
 #include "common.h"
+#include "drivers/serial.h"
 
 u16 *textmemptr;
 int attrib = 0x0F;
@@ -57,6 +58,10 @@ void clear() {
 }
 
 void write_char(char c) {
+#ifndef NOGRAPHIC
+    serial_write(c);
+    return;
+#endif
     u16 *pos;
     unsigned att = attrib << 8;
 
@@ -89,6 +94,10 @@ void write_char(char c) {
 }
 
 void write(str s) {
+#ifndef NOGRAPHIC
+    serial_write_str(s);
+    return;
+#endif
     u32 i;
 
     for (i = 0; i < strlen(s); i++)
