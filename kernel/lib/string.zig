@@ -1,3 +1,4 @@
+const mem = @import("memory");
 pub const char = u8;
 
 pub const String = struct {
@@ -9,40 +10,46 @@ pub const String = struct {
         };
     }
 
-    pub fn fromRuntime(comptime str: []const u8) String {
+    pub fn fromRuntime(str: []const u8) String {
         return String{
             .data = str,
         };
     }
 
-    pub fn length(self: *String) usize {
+    pub fn length(self: String) usize {
         return self.data.len;
     }
 
-    pub fn join(self: *const String, other: String) String {
-        const new_length = self.length() + other.length();
-        var result = []u8{0} ** new_length;
+    pub fn join(self: String, other: String) ?String {
+        const newLen = self.length() + other.length();
+        if (newLen > 1024) {
+            return null;
+        }
+
+        var buff: [1024]u8 = undefined;
 
         var i: usize = 0;
-        for (self.data) |c| {
-            result[i] = c;
-            i += 1;
+        while (i < self.length()) : (i += 1) {
+            buff[i] = self.data[i];
         }
 
-        for (other.data, 0..) |c, j| {
-            result[self.length() + j] = c;
+        var j: usize = 0;
+        while (j < other.length()) : (j += 1) {
+            buff[i + j] = other.data[j];
         }
 
-        return String{
-            .data = result,
-        };
+        return String.fromRuntime(&buff);
     }
 
-    pub fn getPointer(self: *String) [*]const u8 {
+    pub fn getRawPointer(self: String) [*]const u8 {
         return self.data.ptr;
     }
 
-    pub fn iterate(self: *String) []const u8 {
+    pub fn getPointer(self: String) mem.Pointer(u8) {
+        return mem.Pointer(u8).init(self.data.ptr);
+    }
+
+    pub fn iterate(self: String) []const u8 {
         return self.data;
     }
 
@@ -50,7 +57,7 @@ pub const String = struct {
         return self.data[index];
     }
 
-    pub fn findChar(self: *String, match: char, matches: u16) []u32 {
+    pub fn findChar(self: String, match: char, matches: u16) []u32 {
         var currentMatch = 0;
         var i: usize = 0;
         var indices: [matches]u32 = undefined;

@@ -1,9 +1,9 @@
-ZIG = zig build-obj
+ZIG = zig build
 AS = nasm
 LD = x86_64-elf-ld
 
-ZIGFLAGS = -target x86-freestanding -OReleaseSafe 
-LDFLAGS = -m elf_i386 -T linker.ld
+ZIGFLAGS = -target x86-freestanding-none -OReleaseSafe -fno-stack-check 
+LDFLAGS = -m elf_i386 -T linker.ld -nostdlib
 
 BUILD_DIR = build/obj
 KERNEL_DIR = kernel
@@ -12,18 +12,25 @@ ISO_DIR = iso
 ISO_BOOT = $(ISO_DIR)/boot
 ISO_GRUB = $(ISO_BOOT)/grub
 GRUB_CFG = grub.cfg
+ZIG_DIR = zig-out/build/obj
 
-KERNEL_ZIG_SRCS := $(shell find $(KERNEL_DIR) -name '*.zig')
+KERNEL_ZIG_OBJ := \
+	$(BUILD_DIR)/init.o \
+	$(BUILD_DIR)/idt_symbols.o \
+	$(BUILD_DIR)/isr_symbols.o \
+	$(BUILD_DIR)/gdt_symbols.o
+
 KERNEL_ASM_SRCS := $(shell find $(KERNEL_DIR) -name '*.asm')
-KERNEL_ZIG_OBJS := $(patsubst $(KERNEL_DIR)/%.zig,$(BUILD_DIR)/%.o,$(KERNEL_ZIG_SRCS))
 KERNEL_ASM_OBJS := $(patsubst $(KERNEL_DIR)/%.asm,$(BUILD_DIR)/%.o,$(KERNEL_ASM_SRCS))
 BOOT_OBJ = $(BUILD_DIR)/boot.o
 
 all: avery.iso
 
-$(BUILD_DIR)/%.o: $(KERNEL_DIR)/%.zig
-	@mkdir -p $(dir $@)
-	$(ZIG) $(ZIGFLAGS) $< -femit-bin=$@
+$(ZIG_DIR)/%.o: 
+	$(ZIG)
+
+$(BUILD_DIR)/%.o: $(ZIG_DIR)/%.o 
+	@cp $< $@
 
 $(BUILD_DIR)/%.o: $(KERNEL_DIR)/%.asm
 	@mkdir -p $(dir $@)
@@ -33,7 +40,7 @@ $(BOOT_OBJ): $(BOOT_ASM)
 	@mkdir -p $(dir $@)
 	$(AS) -f elf32 $< -o $@
 
-$(BUILD_DIR)/avery.bin: $(KERNEL_ZIG_OBJS) $(KERNEL_ASM_OBJS) $(BOOT_OBJ)
+$(BUILD_DIR)/avery.bin: $(KERNEL_ZIG_OBJ) $(KERNEL_ASM_OBJS) $(BOOT_OBJ)
 	$(LD) $(LDFLAGS) -o $@ $^
 	@echo "Kernel binary created at $@"
 
