@@ -18,7 +18,8 @@ KERNEL_ZIG_OBJ := \
 	$(BUILD_DIR)/init.o \
 	$(BUILD_DIR)/idt_symbols.o \
 	$(BUILD_DIR)/isr_symbols.o \
-	$(BUILD_DIR)/gdt_symbols.o
+	$(BUILD_DIR)/gdt_symbols.o \
+	$(BUILD_DIR)/irq_symbols.o
 
 KERNEL_ASM_SRCS := $(shell find $(KERNEL_DIR) -name '*.asm')
 KERNEL_ASM_OBJS := $(patsubst $(KERNEL_DIR)/%.asm,$(BUILD_DIR)/%.o,$(KERNEL_ASM_SRCS))
@@ -41,6 +42,7 @@ $(BOOT_OBJ): $(BOOT_ASM)
 	$(AS) -f elf32 $< -o $@
 
 $(BUILD_DIR)/avery.bin: $(KERNEL_ZIG_OBJ) $(KERNEL_ASM_OBJS) $(BOOT_OBJ)
+	$(ZIG)
 	$(LD) $(LDFLAGS) -o $@ $^
 	@echo "Kernel binary created at $@"
 
@@ -53,7 +55,7 @@ avery.iso: $(BUILD_DIR)/avery.bin
 	@echo "ISO image created at avery.iso"
 
 clean:
-	rm -rf $(BUILD_DIR)/* avery.iso $(ISO_DIR)
+	rm -rf $(BUILD_DIR)/* avery.iso $(ISO_DIR) $(ZIG_DIR)
 
 .PHONY: all clean run stdio terminal
 

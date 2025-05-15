@@ -1,5 +1,6 @@
 const str = @import("string");
 const idt = @import("idt");
+const out = @import("output");
 
 extern fn isr0() void;
 extern fn isr1() void;
@@ -68,38 +69,38 @@ pub const EXCEPTION_MESSAGES = [_]str.String{
     str.make("Reserved"),
 };
 
-pub fn initIsrs() void {
+pub fn init() void {
     @setRuntimeSafety(false);
-    idt.idtSetGate(0, @as(u64, @intFromPtr(&isr0)), 0x08, 0x8E);
-    idt.idtSetGate(1, @as(u64, @intFromPtr(&isr1)), 0x08, 0x8E);
-    idt.idtSetGate(2, @as(u64, @intFromPtr(&isr2)), 0x08, 0x8E);
-    idt.idtSetGate(3, @as(u64, @intFromPtr(&isr3)), 0x08, 0x8E);
-    idt.idtSetGate(4, @as(u64, @intFromPtr(&isr4)), 0x08, 0x8E);
-    idt.idtSetGate(5, @as(u64, @intFromPtr(&isr5)), 0x08, 0x8E);
-    idt.idtSetGate(6, @as(u64, @intFromPtr(&isr6)), 0x08, 0x8E);
-    idt.idtSetGate(7, @as(u64, @intFromPtr(&isr7)), 0x08, 0x8E);
-    idt.idtSetGate(8, @as(u64, @intFromPtr(&isr8)), 0x08, 0x8E);
-    idt.idtSetGate(9, @as(u64, @intFromPtr(&isr9)), 0x08, 0x8E);
-    idt.idtSetGate(10, @as(u64, @intFromPtr(&isr10)), 0x08, 0x8E);
-    idt.idtSetGate(11, @as(u64, @intFromPtr(&isr11)), 0x08, 0x8E);
-    idt.idtSetGate(12, @as(u64, @intFromPtr(&isr12)), 0x08, 0x8E);
-    idt.idtSetGate(13, @as(u64, @intFromPtr(&isr13)), 0x08, 0x8E);
-    idt.idtSetGate(14, @as(u64, @intFromPtr(&isr14)), 0x08, 0x8E);
-    idt.idtSetGate(15, @as(u64, @intFromPtr(&isr15)), 0x08, 0x8E);
-    idt.idtSetGate(16, @as(u64, @intFromPtr(&isr16)), 0x08, 0x8E);
-    idt.idtSetGate(17, @as(u64, @intFromPtr(&isr17)), 0x08, 0x8E);
-    idt.idtSetGate(18, @as(u64, @intFromPtr(&isr18)), 0x08, 0x8E);
-    idt.idtSetGate(19, @as(u64, @intFromPtr(&isr19)), 0x08, 0x8E);
-    idt.idtSetGate(20, @as(u64, @intFromPtr(&isr20)), 0x08, 0x8E);
-    idt.idtSetGate(21, @as(u64, @intFromPtr(&isr21)), 0x08, 0x8E);
-    idt.idtSetGate(22, @as(u64, @intFromPtr(&isr22)), 0x08, 0x8E);
-    idt.idtSetGate(23, @as(u64, @intFromPtr(&isr23)), 0x08, 0x8E);
-    idt.idtSetGate(24, @as(u64, @intFromPtr(&isr24)), 0x08, 0x8E);
-    idt.idtSetGate(25, @as(u64, @intFromPtr(&isr25)), 0x08, 0x8E);
-    idt.idtSetGate(26, @as(u64, @intFromPtr(&isr26)), 0x08, 0x8E);
-    idt.idtSetGate(27, @as(u64, @intFromPtr(&isr27)), 0x08, 0x8E);
-    idt.idtSetGate(28, @as(u64, @intFromPtr(&isr28)), 0x08, 0x8E);
-    idt.idtSetGate(29, @as(u64, @intFromPtr(&isr29)), 0x08, 0x8E);
-    idt.idtSetGate(30, @as(u64, @intFromPtr(&isr30)), 0x08, 0x8E);
-    idt.idtSetGate(31, @as(u64, @intFromPtr(&isr31)), 0x08, 0x8E);
+    idt.setGate(0, @as(u64, @intFromPtr(&isr0)), 0x08, 0x8E);
+    idt.setGate(1, @as(u64, @intFromPtr(&isr1)), 0x08, 0x8E);
+    idt.setGate(2, @as(u64, @intFromPtr(&isr2)), 0x08, 0x8E);
+    idt.setGate(3, @as(u64, @intFromPtr(&isr3)), 0x08, 0x8E);
+    idt.setGate(4, @as(u64, @intFromPtr(&isr4)), 0x08, 0x8E);
+    idt.setGate(5, @as(u64, @intFromPtr(&isr5)), 0x08, 0x8E);
+    idt.setGate(6, @as(u64, @intFromPtr(&isr6)), 0x08, 0x8E);
+    idt.setGate(7, @as(u64, @intFromPtr(&isr7)), 0x08, 0x8E);
+    idt.setGate(8, @as(u64, @intFromPtr(&isr8)), 0x08, 0x8E);
+    idt.setGate(9, @as(u64, @intFromPtr(&isr9)), 0x08, 0x8E);
+    idt.setGate(10, @as(u64, @intFromPtr(&isr10)), 0x08, 0x8E);
+    idt.setGate(11, @as(u64, @intFromPtr(&isr11)), 0x08, 0x8E);
+    idt.setGate(12, @as(u64, @intFromPtr(&isr12)), 0x08, 0x8E);
+    idt.setGate(13, @as(u64, @intFromPtr(&isr13)), 0x08, 0x8E);
+    idt.setGate(14, @as(u64, @intFromPtr(&isr14)), 0x08, 0x8E);
+    idt.setGate(15, @as(u64, @intFromPtr(&isr15)), 0x08, 0x8E);
+    idt.setGate(16, @as(u64, @intFromPtr(&isr16)), 0x08, 0x8E);
+    idt.setGate(17, @as(u64, @intFromPtr(&isr17)), 0x08, 0x8E);
+    idt.setGate(18, @as(u64, @intFromPtr(&isr18)), 0x08, 0x8E);
+    idt.setGate(19, @as(u64, @intFromPtr(&isr19)), 0x08, 0x8E);
+    idt.setGate(20, @as(u64, @intFromPtr(&isr20)), 0x08, 0x8E);
+    idt.setGate(21, @as(u64, @intFromPtr(&isr21)), 0x08, 0x8E);
+    idt.setGate(22, @as(u64, @intFromPtr(&isr22)), 0x08, 0x8E);
+    idt.setGate(23, @as(u64, @intFromPtr(&isr23)), 0x08, 0x8E);
+    idt.setGate(24, @as(u64, @intFromPtr(&isr24)), 0x08, 0x8E);
+    idt.setGate(25, @as(u64, @intFromPtr(&isr25)), 0x08, 0x8E);
+    idt.setGate(26, @as(u64, @intFromPtr(&isr26)), 0x08, 0x8E);
+    idt.setGate(27, @as(u64, @intFromPtr(&isr27)), 0x08, 0x8E);
+    idt.setGate(28, @as(u64, @intFromPtr(&isr28)), 0x08, 0x8E);
+    idt.setGate(29, @as(u64, @intFromPtr(&isr29)), 0x08, 0x8E);
+    idt.setGate(30, @as(u64, @intFromPtr(&isr30)), 0x08, 0x8E);
+    idt.setGate(31, @as(u64, @intFromPtr(&isr31)), 0x08, 0x8E);
 }

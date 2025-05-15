@@ -75,9 +75,13 @@ pub fn putChar(char: str.char) void {
     const attr: u16 = @as(u16, @intCast(attribute << 8));
 
     if (char == 0x08) {
-        if (cursor_x != 0) cursor_x -= 1;
+        if (cursor_x != 0) {
+            cursor_x -= 1;
+            putChar(' ');
+            cursor_x -= 1;
+        }
     } else if (char == 0x09) {
-        cursor_x = (cursor_x & 8) & ~@as(u16, (8 - 1));
+        cursor_x = (cursor_x + 4) & ~@as(u16, 3);
     } else if (char == '\r') {
         cursor_x = 0;
     } else if (char == '\n') {

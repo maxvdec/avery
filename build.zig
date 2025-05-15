@@ -4,6 +4,7 @@ const objects = [_][]const u8{
     "kernel/init.zig",
     "kernel/internal/idt/idt_symbols.zig",
     "kernel/internal/isr/isr_symbols.zig",
+    "kernel/internal/irq/irq_symbols.zig",
     "kernel/internal/gdt/gdt_symbols.zig",
 };
 

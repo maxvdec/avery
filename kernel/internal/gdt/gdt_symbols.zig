@@ -7,10 +7,14 @@ const GdtEntry = packed struct {
     base_high: u8 = 0,
 };
 
-const GdtPointer = extern struct {
+const GdtPointer = packed struct {
     limit: u16 = 0,
     base: u32 = 0,
 };
 
 export var gdt: [3]GdtEntry = [_]GdtEntry{ .{}, .{}, .{} };
-export var gp: GdtPointer align(16) = .{};
+var gp: GdtPointer align(16) = .{};
+
+export fn get_gdt_ptr() *GdtPointer {
+    return &gp;
+}
