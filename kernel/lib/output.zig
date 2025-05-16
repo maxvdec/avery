@@ -55,6 +55,30 @@ pub fn printU64(num: u64) void {
     }
 }
 
+pub fn printn(num: u32) void {
+    @setRuntimeSafety(false);
+    var buffer: [20]u8 = undefined;
+    var i: usize = buffer.len;
+    var v = num;
+
+    if (v == 0) {
+        vgaTxt.putChar('0');
+        return;
+    }
+
+    while (v != 0) : (i -= 1) {
+        const digit = @as(u8, @intCast(v % 10));
+        buffer[i - 1] = '0' + digit;
+        v /= 10;
+    }
+
+    const length = buffer.len - i;
+
+    for (0..length) |j| {
+        vgaTxt.putChar(buffer[i + j]);
+    }
+}
+
 pub fn printHex(num: u64) void {
     @setRuntimeSafety(false);
     var buffer: [16]u8 = undefined;

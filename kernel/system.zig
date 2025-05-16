@@ -90,3 +90,16 @@ pub const regs = packed struct {
     useresp: u32,
     ss: u32,
 };
+
+pub fn panic(msg: []const u8) noreturn {
+    @setRuntimeSafety(false);
+    const out = @import("output");
+    out.setTextColor(out.VgaTextColor.White, out.VgaTextColor.Red);
+    out.clear();
+    out.println("The Avery Kernel panicked!\n");
+    out.println(msg);
+    out.print("\n");
+    out.println("The computer ran into a problem it could not recover from.");
+    out.println("Please report this to the developers.\n");
+    while (true) {}
+}

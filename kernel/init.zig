@@ -8,34 +8,57 @@ const irq = @import("irq");
 const time = @import("time");
 const keyboard = @import("keyboard");
 const in = @import("input");
+const multiboot2 = @import("multiboot2");
+const physmem = @import("physical_mem");
 
-pub fn causeGPF() void {
-    @setRuntimeSafety(false);
-    asm volatile (
-        \\ xor %bx, %bx
-        \\ div %bx
-    );
+const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
+
+extern var kernel_end: u8;
+inline fn getKernelEnd() usize {
+    return @intFromPtr(&kernel_end);
 }
 
-export fn kernel_main() noreturn {
+export fn kernel_main(magic: u32, addr: u32) noreturn {
+    @setRuntimeSafety(false);
     out.initOutputs();
+    if (magic != MULTIBOOT2_HEADER_MAGIC) {
+        sys.panic("Bootloader mismatch. Try using Multiboot2 or reconfigure your bootloader.");
+    }
     gdt.init();
     idt.init();
     isr.init();
     asm volatile ("sti");
     irq.init();
 
-    out.setTextColor(out.VgaTextColor.LightGray, out.VgaTextColor.Black);
+    const bootInfo = multiboot2.getBootInfo(addr);
+    const memMap = multiboot2.getMemoryMapTag(bootInfo);
+    if (memMap.second() == false) {
+        sys.panic("No memory map found.");
+    }
+
+    out.print("Memory map found at: ");
+    out.printHex(@intFromPtr(memMap.first()));
+    out.print("\n");
+    out.print("Kernel end at: ");
+    out.printHex(getKernelEnd());
+    out.print("\n");
+    out.print("Memory map size: ");
+    out.printHex(memMap.first().size);
+    out.print("\n");
+
+    physmem.init(memMap.first(), getKernelEnd());
+    const page = physmem.allocPage();
+    if (page == null) {
+        sys.panic("No free pages available.");
+    }
+    out.print("Allocated page at: ");
+    out.printHex(page.?);
+    out.print("\n");
+
     //out.clear();
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.01");
-    const mystr = in.readln();
-    out.print("You entered: ");
-    out.printstr(mystr);
-    out.print("\n");
 
-    while (true) {
-        asm volatile ("hlt");
-    }
+    while (true) {}
 }

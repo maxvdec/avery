@@ -28,9 +28,9 @@ export fn fault_handler(r: *regs) callconv(.C) noreturn {
     out.initOutputs();
     out.setTextColor(out.VgaTextColor.White, out.VgaTextColor.Red);
     out.clear();
-    out.println("The Avery Kernel panicked!");
+    out.println("The Avery Kernel panicked!\n");
     out.printstr(isr.EXCEPTION_MESSAGES[r.int_no]);
-    out.print("\n");
+    out.print("\n\n");
     out.println("The computer ran into a problem it could not recover from.");
     out.println("Please report this to the developers.\n");
     out.print("Error code: ");

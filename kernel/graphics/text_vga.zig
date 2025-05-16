@@ -111,4 +111,5 @@ pub fn printStr(string: str.String) void {
 
 pub fn initVgaText() void {
     memory_ptr = mem.VolatilePointer(u16).atAddr(0xB8000);
+    setTextColor(VgaTextColor.LightGray, VgaTextColor.Black);
 }
