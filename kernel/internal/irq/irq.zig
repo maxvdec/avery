@@ -28,6 +28,7 @@ pub fn installHandler(irq: u8, handler: *const fn (*sys.regs) void) void {
 }
 
 pub fn removeHandler(irq: u8) void {
+    @setRuntimeSafety(false);
     irqRoutines[irq] = null;
 }
 

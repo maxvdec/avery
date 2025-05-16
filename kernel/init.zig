@@ -31,7 +31,7 @@ export fn kernel_main() noreturn {
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.01");
     const mystr = in.readln();
-    out.println("You entered: ");
+    out.print("You entered: ");
     out.printstr(mystr);
     out.print("\n");
 

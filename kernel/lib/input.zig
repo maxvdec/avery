@@ -1,7 +1,9 @@
 const str = @import("string");
 const keyboard = @import("keyboard");
+const out = @import("output");
 
 pub fn readln() str.String {
+    @setRuntimeSafety(false);
     var buffer: [1024]u8 = undefined;
     var i: usize = 0;
     keyboard.enableKeyboard();
@@ -11,6 +13,7 @@ pub fn readln() str.String {
         if (chr == 0) {
             continue;
         } else {
+            out.printchar(chr);
             if (chr == '\n' or chr == '\r') {
                 break;
             }
@@ -21,5 +24,5 @@ pub fn readln() str.String {
     }
     keyboard.disableKeyboard();
 
-    return str.String.fromRuntime(&buffer[0..i]);
+    return str.String.fromRuntime(buffer[0..i]);
 }
