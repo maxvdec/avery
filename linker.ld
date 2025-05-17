@@ -4,6 +4,7 @@ ENTRY(_start)
 
 SECTIONS {
     . = 1M;  /* Load kernel at 1MB */
+    PROVIDE(kernel_start = .);
 
     .multiboot2 ALIGN(4K) : {
         *(.multiboot2)

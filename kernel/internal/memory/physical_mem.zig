@@ -85,6 +85,22 @@ pub fn allocPage() ?usize {
     return null;
 }
 
+pub fn getFreePages() usize {
+    @setRuntimeSafety(false);
+    var free_pages: usize = 0;
+    for (0..total_pages) |page| {
+        if (!bitmapTest(page)) {
+            free_pages += 1;
+        }
+    }
+    return free_pages;
+}
+
+pub fn getTotalMemory() usize {
+    @setRuntimeSafety(false);
+    return total_pages * PAGE_SIZE;
+}
+
 pub fn freePage(addr: usize) void {
     @setRuntimeSafety(false);
     const page = addr / PAGE_SIZE;

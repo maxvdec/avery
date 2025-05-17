@@ -43,6 +43,12 @@ fn scroll() void {
     }
 }
 
+pub fn setCursorPos(x: u8, y: u8) void {
+    cursor_x = @intCast(x);
+    cursor_y = @intCast(y);
+    moveCursor();
+}
+
 fn moveCursor() void {
     const temp: u16 = cursor_y * 80 + cursor_x;
 

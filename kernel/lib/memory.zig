@@ -127,6 +127,10 @@ pub fn alignUp(addr: usize, alignment: usize) usize {
     return (addr + alignment - 1) & ~(alignment - 1);
 }
 
+pub fn alignDown(addr: usize, alignment: usize) usize {
+    return addr & ~(alignment - 1);
+}
+
 pub fn Tuple(comptime T: type, comptime U: type) type {
     return struct {
         a: T,

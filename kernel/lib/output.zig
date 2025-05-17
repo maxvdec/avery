@@ -31,6 +31,10 @@ pub fn println(string: []const u8) void {
     vgaTxt.printStr(str.make("\n"));
 }
 
+pub fn setCursorPos(x: u8, y: u8) void {
+    vgaTxt.setCursorPos(x, y);
+}
+
 pub fn printU64(num: u64) void {
     @setRuntimeSafety(false);
     var buffer: [20]u8 = undefined;
@@ -81,6 +85,7 @@ pub fn printn(num: u32) void {
 
 pub fn printHex(num: u64) void {
     @setRuntimeSafety(false);
+    print("0x");
     var buffer: [16]u8 = undefined;
     var i: usize = buffer.len;
     var v = num;

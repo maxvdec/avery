@@ -10,6 +10,9 @@ const keyboard = @import("keyboard");
 const in = @import("input");
 const multiboot2 = @import("multiboot2");
 const physmem = @import("physical_mem");
+const virtmem = @import("virtual_mem");
+const tests = @import("boot_tests");
+const alloc = @import("allocator");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -18,9 +21,15 @@ inline fn getKernelEnd() usize {
     return @intFromPtr(&kernel_end);
 }
 
+extern var kernel_start: u8;
+inline fn getKernelStart() usize {
+    return @intFromPtr(&kernel_start);
+}
+
 export fn kernel_main(magic: u32, addr: u32) noreturn {
     @setRuntimeSafety(false);
     out.initOutputs();
+    out.clear();
     if (magic != MULTIBOOT2_HEADER_MAGIC) {
         sys.panic("Bootloader mismatch. Try using Multiboot2 or reconfigure your bootloader.");
     }
@@ -36,26 +45,12 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
         sys.panic("No memory map found.");
     }
 
-    out.print("Memory map found at: ");
-    out.printHex(@intFromPtr(memMap.first()));
-    out.print("\n");
-    out.print("Kernel end at: ");
-    out.printHex(getKernelEnd());
-    out.print("\n");
-    out.print("Memory map size: ");
-    out.printHex(memMap.first().size);
-    out.print("\n");
-
     physmem.init(memMap.first(), getKernelEnd());
-    const page = physmem.allocPage();
-    if (page == null) {
-        sys.panic("No free pages available.");
-    }
-    out.print("Allocated page at: ");
-    out.printHex(page.?);
-    out.print("\n");
+    virtmem.init(getKernelStart(), getKernelEnd());
 
-    //out.clear();
+    //alloc.init(16 * 1024 * 1024); // 16MB heap size
+    tests.runAll();
+
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.01");
