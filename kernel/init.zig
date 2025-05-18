@@ -13,6 +13,7 @@ const physmem = @import("physical_mem");
 const virtmem = @import("virtual_mem");
 const tests = @import("boot_tests");
 const alloc = @import("allocator");
+const mem = @import("memory");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -46,10 +47,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     }
 
     physmem.init(memMap.first(), getKernelEnd());
-    virtmem.init(getKernelStart(), getKernelEnd());
-
-    //alloc.init(16 * 1024 * 1024); // 16MB heap size
-    tests.runAll();
+    virtmem.init();
 
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");

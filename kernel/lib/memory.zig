@@ -1,3 +1,5 @@
+const alloc = @import("allocator");
+
 pub fn Pointer(comptime T: type) type {
     return struct {
         data: [*]T,
@@ -158,6 +160,136 @@ pub fn Tuple(comptime T: type, comptime U: type) type {
 
         pub fn second(self: Self) U {
             return self.b;
+        }
+    };
+}
+
+pub fn Error(comptime T: type) type {
+    return struct {
+        value: T,
+        isError: bool,
+
+        message: []const u8,
+
+        const Self = @This();
+
+        pub fn throw(message: []const u8) Self {
+            return Self{
+                .value = undefined,
+                .isError = true,
+                .message = message,
+            };
+        }
+
+        pub fn ok(value: T) Self {
+            return Self{
+                .value = value,
+                .isError = false,
+                .message = "",
+            };
+        }
+
+        pub fn unwrap(self: Self) T {
+            if (self.isError) {
+                return undefined;
+            } else {
+                return self.value;
+            }
+        }
+
+        pub fn isOk(self: Self) bool {
+            return !self.isError;
+        }
+
+        pub fn getError(self: Self) ?[]const u8 {
+            if (self.isError) {
+                return self.message;
+            } else {
+                return null;
+            }
+        }
+    };
+}
+
+pub fn Array(comptime T: type) type {
+    return struct {
+        ptr: ?[*]T,
+        len: usize,
+        capacity: usize,
+
+        const Self = @This();
+
+        pub fn init() Self {
+            return Self{
+                .ptr = null,
+                .len = 0,
+                .capacity = 0,
+            };
+        }
+
+        pub fn destroy(self: *Self) void {
+            if (self.ptr) |ptr| {
+                alloc.free(@ptrCast(ptr));
+            }
+
+            self.ptr = null;
+            self.len = 0;
+            self.capacity = 0;
+        }
+
+        pub fn append(self: *Self, value: T) void {
+            @setRuntimeSafety(false);
+            if (self.len >= self.capacity) {
+                _ = self.grow();
+            }
+
+            self.ptr.?[self.len] = value;
+            self.len += 1;
+        }
+
+        fn grow(self: *Self) Error(void) {
+            @setRuntimeSafety(false);
+            const new_capacity: usize = if (self.capacity == 0) 4 else self.capacity * 2;
+            const new_size = new_capacity * @sizeOf(T);
+            const new_mem = alloc.request(new_size) orelse {
+                return Error(void).throw("Failed to allocate memory");
+            };
+
+            const new_ptr = @as([*]T, @alignCast(@ptrCast(new_mem)));
+
+            if (self.ptr) |old_ptr| {
+                for (0..self.len) |i| {
+                    new_ptr[i] = old_ptr[i];
+                }
+                alloc.free(@ptrCast(old_ptr));
+            }
+
+            self.ptr = new_ptr;
+            self.capacity = new_capacity;
+            return Error(void).ok({});
+        }
+
+        pub fn get(self: Self, index: usize) ?T {
+            @setRuntimeSafety(false);
+            if (index >= self.len) {
+                return null;
+            }
+            return self.ptr.?[index];
+        }
+
+        pub fn set(self: *Self, index: usize, value: T) ?void {
+            @setRuntimeSafety(false);
+            if (index >= self.len) {
+                return null;
+            }
+            self.ptr.?[index] = value;
+            return null;
+        }
+
+        pub fn iterate(self: Self) []T {
+            @setRuntimeSafety(false);
+            if (self.ptr == null) return &[_]T{};
+            return @as([*]T, @ptrCast(self.ptr.?))[0..self.len];
         }
     };
 }

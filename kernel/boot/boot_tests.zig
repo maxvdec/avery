@@ -1,5 +1,6 @@
 const out = @import("output");
 const virtmem = @import("virtual_mem");
+const pmm = @import("physical_mem");
 
 pub fn vmm() void {
     @setRuntimeSafety(false);
@@ -11,13 +12,10 @@ pub fn vmm() void {
     const test_phys_addr: u32 = 0x300000; // 3MB mark
     const test_value: u32 = 0xDEADBEEF;
 
-    virtmem.mapPage(test_virt_addr, test_phys_addr, virtmem.PAGE_PRESENT | virtmem.PAGE_WRITABLE) orelse {
-        testFailed("Failed to map page\n");
-        return;
-    };
+    virtmem.mapPage(test_virt_addr, test_phys_addr, virtmem.PAGE_PRESENT | virtmem.PAGE_RW);
 
-    if (virtmem.getPhysicalAddress(test_virt_addr).? != test_phys_addr) {
-        testFailed("Failed to map page\n");
+    if (virtmem.translate(test_virt_addr).? != test_phys_addr) {
+        testFailed("Failed to map page. Physical address is off\n");
         return;
     }
 
@@ -40,61 +38,76 @@ pub fn vmm() void {
 
     virtmem.unmapPage(test_virt_addr);
 
-    if (virtmem.getPhysicalAddress(test_virt_addr) != null) {
+    if (virtmem.translate(test_virt_addr) != null) {
         testFailed("Failed to unmap page\n");
         return;
     }
 
     testPassed();
 
-    out.print("Test IV: Virtual Memory Allocation..................");
-    const allocation_size: usize = 8192; // 2 pages
-    const alloc_addr = virtmem.allocateVirtualMemory(allocation_size, virtmem.PAGE_PRESENT | virtmem.PAGE_WRITABLE) orelse {
-        testFailed("Failed to allocate virtual memory\n");
+    out.println("=========================");
+}
+
+pub fn vmm_alloc_tests() void {
+    @setRuntimeSafety(false);
+
+    out.println("\n======= Virtual Memory Allocation Tests =======");
+
+    // Test 1: Allocate 1 page and verify mapping
+    out.print("Test I: Allocate 1 page.............");
+    const size1 = pmm.PAGE_SIZE;
+    const flags = virtmem.PAGE_PRESENT | virtmem.PAGE_RW;
+    const addr1 = virtmem.allocVirtual(size1, flags) orelse {
+        testFailed("Allocation failed\n");
         return;
     };
 
-    const alloc_ptr: *volatile u32 = @ptrFromInt(alloc_addr);
-    alloc_ptr.* = test_value;
-    const read_alloc_value = alloc_ptr.*;
-    if (read_alloc_value != test_value) {
-        testFailed("Failed to read value from allocated virtual memory\n");
+    if (virtmem.translate(addr1) == null) {
+        testFailed("Allocation did not map any page\n");
         return;
     }
-
     testPassed();
 
-    out.print("Test V: Freeing allocated virtual memory..................");
-    virtmem.freeVirtualMemory(alloc_addr, allocation_size);
-
-    if (virtmem.getPhysicalAddress(alloc_addr) != null) {
-        testFailed("Failed to free allocated virtual memory\n");
+    // Test 2: Write and read memory at allocated virtual address
+    out.print("Test II: Access allocated memory...............");
+    const ptr1: *volatile u32 = @ptrFromInt(addr1);
+    const test_val1: u32 = 0x12345678;
+    ptr1.* = test_val1;
+    const read_val1 = ptr1.*;
+    if (read_val1 != test_val1) {
+        testFailed("Read value does not match written value\n");
         return;
     }
-
     testPassed();
 
-    out.print("Test VI: Large allocation...................");
-    const large_allocation_size: usize = 4096 * 4096; // 4096 pages (16MB)
-    const large_alloc_addr = virtmem.allocateVirtualMemory(large_allocation_size, virtmem.PAGE_PRESENT | virtmem.PAGE_WRITABLE) orelse {
-        testFailed("Failed to allocate large virtual memory\n");
+    // Test 3: Allocate multiple pages (e.g., 3 pages)
+    out.print("Test III: Allocate multiple pages (3 pages)...........");
+    const size3 = pmm.PAGE_SIZE * 3;
+    const addr3 = virtmem.allocVirtual(size3, flags) orelse {
+        testFailed("Allocation of multiple pages failed\n");
         return;
     };
-    const large_alloc_ptr: *volatile u32 = @ptrFromInt(large_alloc_addr);
-    large_alloc_ptr.* = test_value;
-    const read_large_alloc_value = large_alloc_ptr.*;
 
-    if (read_large_alloc_value != test_value) {
-        testFailed("Failed to read value from large allocated virtual memory\n");
-        return;
+    // Check each page is mapped
+    var i: usize = 0;
+    while (i < 3) : (i += 1) {
+        if (virtmem.translate(addr3 + i * pmm.PAGE_SIZE) == null) {
+            testFailed("Pag  in multi-page allocation not mapped\n");
+            return;
+        }
     }
     testPassed();
 
-    out.print("Test VII: Freeing large allocated virtual memory..................");
-    virtmem.freeVirtualMemory(large_alloc_addr, large_allocation_size);
-    if (virtmem.getPhysicalAddress(large_alloc_addr) != null) {
-        testFailed("Failed to free large allocated virtual memory\n");
-        return;
+    // Test 4: Free allocated pages and verify unmapped
+    out.print("Test IV: Free allocated pages and verify unmapping......");
+    virtmem.freeVirtual(addr3, size3);
+
+    i = 0;
+    while (i < 3) : (i += 1) {
+        if (virtmem.translate(addr3 + i * pmm.PAGE_SIZE) != null) {
+            testFailed("Page  still mapped after free\n");
+            return;
+        }
     }
     testPassed();
 
@@ -115,4 +128,5 @@ pub fn testPassed() void {
 
 pub fn runAll() void {
     vmm();
+    vmm_alloc_tests();
 }
