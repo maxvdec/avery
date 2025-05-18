@@ -1,4 +1,6 @@
 const mem = @import("memory");
+const alloc = @import("allocator");
+const sys = @import("system");
 pub const char = u8;
 
 pub const String = struct {
@@ -85,7 +87,7 @@ pub const String = struct {
         return null;
     }
 
-    pub fn isEqualTo(self: *const String, other: *const String) bool {
+    pub fn isEqualToStr(self: *const String, other: String) bool {
         if (self.data.len != other.data.len) {
             return false;
         }
@@ -98,6 +100,19 @@ pub const String = struct {
 
         return true;
     }
+
+    pub fn isEqualTo(self: String, other: String) bool {
+        if (self.data.len != other.data.len) {
+            return false;
+        }
+
+        for (self.data, other.data) |a, b| {
+            if (a != b) {
+                return false;
+            }
+        }
+        return true;
+    }
 };
 
 pub fn make(comptime str: []const u8) String {
@@ -106,4 +121,16 @@ pub fn make(comptime str: []const u8) String {
 
 pub fn makeRuntime(str: []const u8) String {
     return String.fromRuntime(str);
+}
+
+pub fn makeOwned(str: []u8) String {
+    @setRuntimeSafety(false);
+    const raw = alloc.request(str.len);
+    if (raw == null) {
+        return String.init("");
+    }
+
+    const buffer: []u8 = raw.?[0..str.len];
+    _ = sys.memcpy(buffer.ptr, str.ptr, str.len);
+    return String.fromRuntime(buffer);
 }

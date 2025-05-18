@@ -14,6 +14,7 @@ const virtmem = @import("virtual_mem");
 const tests = @import("boot_tests");
 const alloc = @import("allocator");
 const mem = @import("memory");
+const fusion = @import("fusion");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -25,6 +26,11 @@ inline fn getKernelEnd() usize {
 extern var kernel_start: u8;
 inline fn getKernelStart() usize {
     return @intFromPtr(&kernel_start);
+}
+
+var memoryMap: multiboot2.MemoryMapTag = undefined;
+pub fn getMemoryMap() multiboot2.MemoryMapTag {
+    return memoryMap;
 }
 
 export fn kernel_main(magic: u32, addr: u32) noreturn {
@@ -46,12 +52,15 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
         sys.panic("No memory map found.");
     }
 
+    memoryMap = memMap.first().*;
+
     physmem.init(memMap.first(), getKernelEnd());
     virtmem.init();
 
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
-    out.println("Pre-Alpha Version: paph-0.01");
+    out.println("Pre-Alpha Version: paph-0.01\n");
+    fusion.main(getMemoryMap());
 
     while (true) {}
 }

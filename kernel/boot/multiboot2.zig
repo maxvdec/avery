@@ -61,6 +61,29 @@ pub fn getMemoryMapTag(bootInfo: *const BootInfo) mem.Tuple(*const MemoryMapTag,
     return memoryMap;
 }
 
+pub fn getAvailableMemory(memMap: MemoryMapTag) u64 {
+    var memCopy = memMap;
+    const tag = &memCopy;
+    const entry_size = tag.entry_size;
+    const total_tag_size = tag.size;
+    const entry_count = (total_tag_size - @sizeOf(MemoryMapTag)) / entry_size;
+
+    var totalUsable: u64 = 0;
+    var entry_ptr = @intFromPtr(tag) + @sizeOf(MemoryMapTag);
+
+    var i: usize = 0;
+    while (i < entry_count) : (i += 1) {
+        const entry: *const MemoryMapEntry = @ptrFromInt(entry_ptr);
+        if (entry.typ == 1) {
+            totalUsable += entry.length;
+        }
+
+        entry_ptr += entry_size;
+    }
+
+    return totalUsable;
+}
+
 pub fn printMemoryMap(tag: *const MemoryMapTag) void {
     const entryCount = (tag.size - @sizeOf(MemoryMapTag)) / @sizeOf(MemoryMapEntry);
     const entries: [*]const MemoryMapEntry = @ptrFromInt(@intFromPtr(tag) + @sizeOf(MemoryMapTag));

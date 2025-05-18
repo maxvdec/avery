@@ -1,4 +1,6 @@
 const alloc = @import("allocator");
+const str = @import("string");
+const sys = @import("system");
 
 pub fn Pointer(comptime T: type) type {
     return struct {
@@ -237,10 +239,24 @@ pub fn Array(comptime T: type) type {
             self.capacity = 0;
         }
 
+        pub fn pop(self: *Self) ?T {
+            @setRuntimeSafety(false);
+            if (self.len == 0) {
+                return null;
+            }
+            self.len -= 1;
+            const value = self.ptr.?[self.len];
+            self.ptr.?[self.len] = undefined;
+            return value;
+        }
+
         pub fn append(self: *Self, value: T) void {
             @setRuntimeSafety(false);
             if (self.len >= self.capacity) {
-                _ = self.grow();
+                const err = self.grow();
+                if (!err.isOk()) {
+                    sys.panic(err.message);
+                }
             }
 
             self.ptr.?[self.len] = value;
@@ -289,7 +305,7 @@ pub fn Array(comptime T: type) type {
         pub fn iterate(self: Self) []T {
             @setRuntimeSafety(false);
             if (self.ptr == null) return &[_]T{};
-            return @as([*]T, @ptrCast(self.ptr.?))[0..self.len];
+            return self.ptr.?[0..self.len];
         }
     };
 }

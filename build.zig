@@ -23,6 +23,7 @@ pub fn build(b: *std.Build) !void {
 
     var all_files = std.ArrayList([]const u8).init(allocator);
     try collectZigFilesRecursive(&all_files, allocator, "kernel");
+    try collectZigFilesRecursive(&all_files, allocator, "fusion");
 
     var module_files = std.StringHashMap([]const u8).init(allocator);
     for (all_files.items) |path| {

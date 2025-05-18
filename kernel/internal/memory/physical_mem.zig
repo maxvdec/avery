@@ -101,6 +101,17 @@ pub fn getTotalMemory() usize {
     return total_pages * PAGE_SIZE;
 }
 
+pub fn getUsedMemory() usize {
+    @setRuntimeSafety(false);
+    var used_memory: usize = 0;
+    for (0..total_pages) |page| {
+        if (bitmapTest(page)) {
+            used_memory += PAGE_SIZE;
+        }
+    }
+    return used_memory;
+}
+
 pub fn freePage(addr: usize) void {
     @setRuntimeSafety(false);
     const page = addr / PAGE_SIZE;
