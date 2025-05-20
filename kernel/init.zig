@@ -15,6 +15,8 @@ const tests = @import("boot_tests");
 const alloc = @import("allocator");
 const mem = @import("memory");
 const fusion = @import("fusion");
+const ata = @import("ata");
+const fat32 = @import("fat32");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -56,6 +58,20 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
 
     physmem.init(memMap.first(), getKernelEnd());
     virtmem.init();
+
+    const controller = ata.makeController();
+    //ata.printDeviceInfo(&ataController.master);
+    //ata.printDeviceInfo(&ataController.slave);
+    const master = controller.master;
+
+    _ = fat32.readMBR(&master);
+
+    out.print("Kernel start: ");
+    out.printHex(getKernelStart());
+    out.print("\n");
+    out.print("Kernel end: ");
+    out.printHex(getKernelEnd());
+    out.print("\n");
 
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");

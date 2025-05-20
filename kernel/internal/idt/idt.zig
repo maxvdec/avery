@@ -1,4 +1,3 @@
-const sys = @import("system");
 const mem = @import("memory");
 
 const idtEntry = extern struct { base_lo: u16 = 0, sel: u16 = 0, always0: u8 = 0, flags: u8 = 0, base_hi: u16 = 0 };
@@ -7,6 +6,8 @@ const idtPtr = packed struct {
     limit: u16 = 0,
     base: u32 = 0,
 };
+
+extern fn memset(dst: [*]u8, val: u8, len: usize) *u8;
 
 extern var idt: [256]idtEntry;
 extern fn get_idt_ptr() *idtPtr;
@@ -18,7 +19,7 @@ pub fn init() void {
     idt_ptr.limit = (@sizeOf(idtEntry) * 256) - 1;
     idt_ptr.base = @as(u32, @intCast(@intFromPtr(&idt)));
 
-    _ = sys.memset(@as([*]u8, @ptrCast(&idt)), 0, @sizeOf(idtEntry) * 256);
+    _ = memset(@as([*]u8, @ptrCast(&idt)), 0, @sizeOf(idtEntry) * 256);
 
     idt_load();
 }

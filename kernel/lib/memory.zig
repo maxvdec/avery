@@ -167,6 +167,7 @@ pub fn Tuple(comptime T: type, comptime U: type) type {
 }
 
 pub fn Error(comptime T: type) type {
+    @setRuntimeSafety(false);
     return struct {
         value: T,
         isError: bool,
@@ -176,6 +177,7 @@ pub fn Error(comptime T: type) type {
         const Self = @This();
 
         pub fn throw(message: []const u8) Self {
+            @setRuntimeSafety(false);
             return Self{
                 .value = undefined,
                 .isError = true,
@@ -184,6 +186,7 @@ pub fn Error(comptime T: type) type {
         }
 
         pub fn ok(value: T) Self {
+            @setRuntimeSafety(false);
             return Self{
                 .value = value,
                 .isError = false,
@@ -192,6 +195,7 @@ pub fn Error(comptime T: type) type {
         }
 
         pub fn unwrap(self: Self) T {
+            @setRuntimeSafety(false);
             if (self.isError) {
                 return undefined;
             } else {
@@ -200,10 +204,12 @@ pub fn Error(comptime T: type) type {
         }
 
         pub fn isOk(self: Self) bool {
+            @setRuntimeSafety(false);
             return !self.isError;
         }
 
         pub fn getError(self: Self) ?[]const u8 {
+            @setRuntimeSafety(false);
             if (self.isError) {
                 return self.message;
             } else {
@@ -308,4 +314,116 @@ pub fn Array(comptime T: type) type {
             return self.ptr.?[0..self.len];
         }
     };
+}
+
+pub fn Optional(comptime T: type) type {
+    return struct {
+        val: T = undefined,
+        isSet: bool = false,
+
+        const Self = @This();
+
+        pub fn init() Self {
+            return Self{
+                .value = undefined,
+                .isSet = false,
+            };
+        }
+
+        pub fn none() Self {
+            return Self{
+                .val = undefined,
+                .isSet = false,
+            };
+        }
+
+        pub fn some(variable: T) Self {
+            @setRuntimeSafety(false);
+            return Self{
+                .val = variable,
+                .isSet = true,
+            };
+        }
+
+        pub fn unwrap(self: Self) T {
+            @setRuntimeSafety(false);
+            if (!self.isSet) {
+                return undefined;
+            }
+            return self.val;
+        }
+
+        pub fn isPresent(self: Self) bool {
+            @setRuntimeSafety(false);
+            return self.isSet;
+        }
+    };
+}
+
+pub fn reinterpretBytes(comptime T: type, bytes: []const u8, littleEndian: bool) Optional(T) {
+    const size = @sizeOf(T);
+    if (bytes.len != size) {
+        return Optional(T).none();
+    }
+
+    var raw: [@sizeOf(T)]u8 = undefined;
+    var i: usize = 0;
+    while (i < size) : (i += 1) {
+        if (littleEndian) {
+            raw[i] = bytes[(size - 1) - i];
+        } else {
+            raw[i] = bytes[i];
+        }
+    }
+
+    const result: T = @bitCast(raw);
+    return Optional(T).some(result);
+}
+
+pub fn asLittleEndian(bytes: []const u8) []const u8 {
+    @setRuntimeSafety(false);
+    const size = bytes.len;
+    var result: [*]u8 = @ptrCast(&bytes[0]);
+    var i: usize = 0;
+    while (i < size) : (i += 1) {
+        result[i] = bytes[(size - 1) - i];
+    }
+    return result[0..size];
+}
+
+pub fn compareBytes(comptime T: type, a: []const T, b: []const T) bool {
+    @setRuntimeSafety(false);
+    if (a.len != b.len) {
+        return false;
+    }
+
+    for (0..a.len) |i| {
+        if (a[i] != b[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+pub fn startsWith(comptime T: type, a: []const T, b: []const T) bool {
+    @setRuntimeSafety(false);
+    if (a.len < b.len) {
+        return false;
+    }
+
+    for (0..b.len) |i| {
+        if (a[i] != b[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+pub fn readBytes(comptime size: comptime_int, buff: [*]u8) ?[]u8 {
+    @setRuntimeSafety(false);
+    const bytes = @as([*]u8, @ptrCast(buff))[0..size];
+    if (bytes.len != size) {
+        return null;
+    }
+    return bytes;
 }

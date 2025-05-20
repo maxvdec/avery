@@ -6,6 +6,7 @@ const objects = [_][]const u8{
     "kernel/internal/isr/isr_symbols.zig",
     "kernel/internal/irq/irq_symbols.zig",
     "kernel/internal/gdt/gdt_symbols.zig",
+    "kernel/internal/memory/memcopy.zig",
 };
 
 pub fn build(b: *std.Build) !void {

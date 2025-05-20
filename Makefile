@@ -19,7 +19,8 @@ KERNEL_ZIG_OBJ := \
 	$(BUILD_DIR)/idt_symbols.o \
 	$(BUILD_DIR)/isr_symbols.o \
 	$(BUILD_DIR)/gdt_symbols.o \
-	$(BUILD_DIR)/irq_symbols.o
+	$(BUILD_DIR)/irq_symbols.o \
+	$(BUILD_DIR)/memcopy.o \
 
 KERNEL_ASM_SRCS := $(shell find $(KERNEL_DIR) -name '*.asm')
 KERNEL_ASM_OBJS := $(patsubst $(KERNEL_DIR)/%.asm,$(BUILD_DIR)/%.o,$(KERNEL_ASM_SRCS))
@@ -60,17 +61,17 @@ clean:
 .PHONY: all clean run stdio terminal
 
 run: avery.iso
-	qemu-system-x86_64 -cdrom avery.iso -m 128M -boot d -serial stdio 
+	qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -serial stdio 
 
 nographic:
-	qemu-system-x86_64 -cdrom avery.iso -m 128M -boot d -nographic
+	qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -nographic
 	@echo "Running in non-graphical mode"
 
 stdio: avery.iso
-	qemu-system-x86_64 -cdrom avery.iso -m 128M -boot d -monitor stdio
+	qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -monitor stdio
 	@echo "Running with stdio"
 
 terminal: avery.iso
-	qemu-system-x86_64 -cdrom avery.iso -m 128M -boot d -terminal stdio
+	qemu-system-x86_64 -cdrom avery.iso -drive file=disk.img,format=raw -m 128M -boot d -terminal stdio
 	@echo "Running with terminal"
 

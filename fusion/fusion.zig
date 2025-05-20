@@ -5,6 +5,7 @@ const out = @import("output");
 const pmm = @import("physical_mem");
 const vmm = @import("virtual_mem");
 const multiboot2 = @import("multiboot2");
+const alloc = @import("allocator");
 
 fn printMemory(memMap: multiboot2.MemoryMapTag) void {
     out.println("====== Memory Info ======");
@@ -46,6 +47,10 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
         } else if (command.isEqualTo(str.make("sys.mem"))) {
             // TODO: Fix this command
             printMemory(memMap);
+            lastExitCode = 0;
+        } else if (command.isEqualTo(str.make("alloc"))) {
+            _ = alloc.request(512).?;
+            out.println("Allocated 512 bytes");
             lastExitCode = 0;
         } else {
             out.print("Command '");

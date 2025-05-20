@@ -4,3 +4,4 @@ avery.iso
 .zig-cache
 zig-out
 .vscode
+disk.img

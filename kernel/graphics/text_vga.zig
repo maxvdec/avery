@@ -27,19 +27,23 @@ pub const VgaTextColor = enum(u8) {
 };
 
 fn scroll() void {
-    var blank: u32 = undefined;
-    var temp: u32 = undefined;
+    const screen_width = 80;
+    const screen_height = 25;
 
-    blank = 0x20 | @as(u16, @intCast((attribute << 8)));
+    if (cursor_y >= screen_height) {
+        const lines_to_move = screen_height - 1;
+        const total_cells = lines_to_move * screen_width;
 
-    if (cursor_y >= 25) {
-        temp = cursor_y - 25 + 1;
-        const memptr_u8 = memory_ptr.castPtr(u8, 0);
-        const src_8 = memptr_u8.offsetPtr(temp * 80);
-        const count = (25 - temp) * 80 * 2;
-        _ = sys.memcpyv(memptr_u8.data, src_8, count);
-        _ = sys.memset16v(memory_ptr.offsetPtr(25 - temp), @as(u16, @intCast(blank)), 80);
-        cursor_y = 25 - 1;
+        const dst = memory_ptr;
+        const src = memory_ptr.offset(screen_width);
+
+        _ = sys.memcpy16v(dst.data, src.data, total_cells * @sizeOf(u16));
+
+        const blank: u16 = 0x20 | @as(u16, @intCast(attribute << 8));
+        const last_line = memory_ptr.offset((screen_height - 1) * screen_width);
+        _ = sys.memset16v(last_line.data, blank, screen_width);
+
+        cursor_y = screen_height - 1;
     }
 }
 

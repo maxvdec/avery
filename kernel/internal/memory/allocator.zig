@@ -11,6 +11,14 @@ pub fn request(size: usize) ?[*]u8 {
         return null;
     };
 
+    out.print("Allocated virtual memory at: ");
+    out.printHex(virt_addr);
+    out.print("\n");
+    out.print("Which in turn maps to physical memory at: ");
+    const phys_addr = vmm.translate(virt_addr).?;
+    out.printHex(phys_addr);
+    out.print("\n");
+
     const pages_needed = (size + pmm.PAGE_SIZE - 1) / pmm.PAGE_SIZE;
 
     const guard_page_addr = virt_addr + (pages_needed * pmm.PAGE_SIZE);
@@ -19,7 +27,23 @@ pub fn request(size: usize) ?[*]u8 {
     const metadata = @as(*usize, @ptrCast(@alignCast(@as(*anyopaque, @ptrFromInt(virt_addr)))));
     metadata.* = size;
 
+    // Clean the memory
+    for (0..size) |i| {
+        const byte_ptr: *u8 = @ptrFromInt(virt_addr + i);
+        byte_ptr.* = 0;
+    }
+
     return @as([*]u8, @ptrFromInt(virt_addr + @sizeOf(usize)));
+}
+
+pub fn store(comptime T: type) *T {
+    @setRuntimeSafety(false);
+    const size = @sizeOf(T);
+    const ptr = request(size) orelse {
+        sys.panic("Failed to allocate memory for object");
+    };
+
+    return @alignCast(@ptrCast(ptr));
 }
 
 pub fn free(ptr: [*]u8) void {
