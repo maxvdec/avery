@@ -17,6 +17,7 @@ const mem = @import("memory");
 const fusion = @import("fusion");
 const ata = @import("ata");
 const fat32 = @import("fat32");
+const framebuffer = @import("framebuffer");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -56,22 +57,15 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
 
     memoryMap = memMap.first().*;
 
+    const framebufferTag = multiboot2.getFramebufferTag(bootInfo);
+    if (framebufferTag.second() == false) {
+        sys.panic("No framebuffer found.");
+    }
+
     physmem.init(memMap.first(), getKernelEnd());
     virtmem.init();
 
-    const controller = ata.makeController();
-    //ata.printDeviceInfo(&ataController.master);
-    //ata.printDeviceInfo(&ataController.slave);
-    const master = controller.master;
-
-    _ = fat32.readMBR(&master);
-
-    out.print("Kernel start: ");
-    out.printHex(getKernelStart());
-    out.print("\n");
-    out.print("Kernel end: ");
-    out.printHex(getKernelEnd());
-    out.print("\n");
+    framebuffer.switchToTextMode();
 
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
