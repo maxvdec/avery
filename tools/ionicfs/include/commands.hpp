@@ -64,6 +64,11 @@ void copyFile(const fs::path &diskPath, const std::string &fileName,
               const std::string path, int partitionIndex);
 uint64_t findFreeDirectoryEntry(const fs::path &diskPath, uint32_t startRegion,
                                 int sizeAtLeast);
-uint32_t findFreeRegion(const fs::path &diskPath, uint32_t partitionNumber);
+uint32_t findFreeRegion(const fs::path &diskPath, uint32_t partitionNumber,
+                        std::vector<uint32_t> ignore = {});
+void readFile(const fs::path &diskPath, const std::string &fileName,
+              int partitionIndex, bool hex = false);
+uint32_t findFileInDirectory(const fs::path &diskPath,
+                             const std::string &fileName, uint32_t region);
 
 #endif // COMMANDS_HPP

@@ -60,6 +60,36 @@ int main(int argc, char *argv[]) {
             partitionIndex = std::stoi(argv[4]);
         }
         createDirectory(diskPath, dirName, partitionIndex);
+    } else if (strcmp(argv[1], "copy") == 0) {
+        std::string path(argv[2]);
+        fs::path diskPath(path);
+        std::string fileName(argv[3]);
+        std::string destPath(argv[4]);
+        int partitionIndex = 0;
+        if (argc > 5) {
+            partitionIndex = std::stoi(argv[5]);
+        }
+        copyFile(diskPath, fileName, destPath, partitionIndex);
+    } else if (strcmp(argv[1], "read") == 0) {
+        if (strcmp(argv[2], "-hex") == 0) {
+            std::string path(argv[3]);
+            fs::path diskPath(path);
+            std::string fileName(argv[4]);
+            int partitionIndex = 0;
+            if (argc > 5) {
+                partitionIndex = std::stoi(argv[5]);
+            }
+            readFile(diskPath, fileName, partitionIndex, true);
+        } else {
+            std::string path(argv[2]);
+            fs::path diskPath(path);
+            std::string fileName(argv[3]);
+            int partitionIndex = 0;
+            if (argc > 4) {
+                partitionIndex = std::stoi(argv[4]);
+            }
+            readFile(diskPath, fileName, partitionIndex, false);
+        }
     } else {
         std::cerr << "Unknown command: " << argv[1] << std::endl;
         std::cerr << "Usage: " << argv[0] << " <disk_path>" << std::endl;

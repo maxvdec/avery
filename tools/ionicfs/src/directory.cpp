@@ -245,6 +245,10 @@ uint32_t traverseDirectory(const fs::path &diskPath,
     int found = 0;
     while (found < pathItems.size()) {
         std::string currentPath = pathItems[found];
+        if (currentPath == ".") {
+            found++;
+            continue;
+        }
         bool foundEntry = false;
         for (const auto &entry : entries) {
             if (entry.name == currentPath && entry.isDirectory) {
@@ -444,7 +448,8 @@ uint64_t findFreeDirectoryEntry(const fs::path &diskPath, uint32_t startRegion,
     return 0;
 }
 
-uint32_t findFreeRegion(const fs::path &diskPath, uint32_t partitionNumber) {
+uint32_t findFreeRegion(const fs::path &diskPath, uint32_t partitionNumber,
+                        std::vector<uint32_t> ignore) {
     if (!fs::exists(diskPath)) {
         std::cerr << "Error: Disk path does not exist." << std::endl;
         return 0;
@@ -477,11 +482,70 @@ uint32_t findFreeRegion(const fs::path &diskPath, uint32_t partitionNumber) {
         diskFile.seekg(currentRegion * 512);
         diskFile.read(&byte, sizeof(byte));
         if (byte == EMPTY_REGION || byte == DELETED_REGION) {
-            std::cout << "Found free region: " << currentRegion << std::endl;
+            if (std::find(ignore.begin(), ignore.end(), currentRegion) !=
+                ignore.end()) {
+                currentRegion++;
+                continue;
+            }
             return currentRegion;
         } else {
             currentRegion++;
         }
     }
     return 0;
+}
+
+uint32_t findFileInDirectory(const fs::path &diskPath,
+                             const std::string &fileName, uint32_t region) {
+    if (!fs::exists(diskPath)) {
+        std::cerr << "Error: Disk path does not exist." << std::endl;
+        return {};
+    }
+
+    if (fs::is_directory(diskPath)) {
+        std::cerr << "Error: Disk path is a directory." << std::endl;
+        return {};
+    }
+
+    if (fs::is_empty(diskPath)) {
+        std::cerr << "Error: Disk path is empty." << std::endl;
+        return {};
+    }
+
+    std::fstream diskFile(diskPath,
+                          std::ios::in | std::ios::out | std::ios::binary);
+    if (!diskFile) {
+        std::cerr << "Error: Unable to open disk file." << std::endl;
+        return {};
+    }
+
+    std::vector<DirectoryEntry> entries =
+        parseDirectory(diskPath, region).entries;
+    int found = 0;
+    while (found < entries.size()) {
+        std::string currentPath = entries[found].name;
+        if (currentPath == ".") {
+            found++;
+            continue;
+        }
+        bool foundEntry = false;
+        for (const auto &entry : entries) {
+            if (entry.name == currentPath && entry.isDirectory) {
+                foundEntry = true;
+                entries = parseDirectory(diskPath, entry.region).entries;
+                break;
+            } else if (entry.name == fileName) {
+                foundEntry = true;
+                return entry.region;
+            }
+        }
+        if (!foundEntry) {
+            std::cerr << "Error: File not found." << std::endl;
+            return {};
+        }
+        found++;
+    }
+
+    std::cerr << "Error: File not found." << std::endl;
+    return {};
 }
