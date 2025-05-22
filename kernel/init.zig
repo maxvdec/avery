@@ -65,8 +65,6 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     physmem.init(memMap.first(), getKernelEnd());
     virtmem.init();
 
-    framebuffer.switchToTextMode();
-
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.01\n");

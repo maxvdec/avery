@@ -5,3 +5,12 @@ avery.iso
 zig-out
 .vscode
 disk.img
+tools/ionicfs/build
+tools/ionicfs/.clang-format
+tools/ionicfs/compile_commands.json
+tools/ionicfs/CMakeFiles
+tools/ionicfs/cmake_install.cmake
+tools/ionicfs/CMakeCache.txt
+tools/ionicfs/ionicfs
+tools/ionicfs/Makefile
+tools/ionicfs/.cache

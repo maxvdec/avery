@@ -10,12 +10,13 @@ dd multiboot2_end - multiboot2_start
 dd - (0xe85250d6 + 0x00 + (multiboot2_end - multiboot2_start))
 
 align 8
-dd 5
-dw 0
+dd 5 
 dd 20
-dd 1920
-dd 1080
-dd 32
+dw 1
+dw 0
+dd 1920      
+dd 1080      
+dd 32        
 
 align 8
 dw 0
