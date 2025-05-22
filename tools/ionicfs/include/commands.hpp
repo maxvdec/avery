@@ -62,5 +62,8 @@ void createDirectory(const fs::path &diskPath, const std::string &dirName,
                      int partitionIndex);
 void copyFile(const fs::path &diskPath, const std::string &fileName,
               const std::string path, int partitionIndex);
+uint64_t findFreeDirectoryEntry(const fs::path &diskPath, uint32_t startRegion,
+                                int sizeAtLeast);
+uint32_t findFreeRegion(const fs::path &diskPath, uint32_t partitionNumber);
 
 #endif // COMMANDS_HPP

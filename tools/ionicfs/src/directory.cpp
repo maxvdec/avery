@@ -73,7 +73,7 @@ Directory parseDirectory(const fs::path &diskPath, uint32_t region) {
 
     while (currentRegion != 0) {
         char regionData[512] = {0};
-        diskFile.seekg(currentRegion * 512);
+        diskFile.seekp(currentRegion * 512);
         diskFile.read(regionData, sizeof(regionData));
 
         if (!diskFile) {
@@ -93,7 +93,6 @@ Directory parseDirectory(const fs::path &diskPath, uint32_t region) {
 
         while (offset < 508) {
             if (offset + 25 > 508) {
-
                 break;
             }
 
@@ -313,12 +312,176 @@ void createDirectory(const fs::path &diskPath, const std::string &dirName,
     uint32_t parentRegion =
         traverseDirectory(diskPath, withoutLastComponent, partitionIndex);
 
+    std::string directoryName = dirName.substr(dirName.find_last_of('/') + 1);
+
     if (parentRegion == 0) {
         std::cerr << "Error: Parent directory not found." << std::endl;
         return;
     } else {
-        std::cout << "Parent directory found at region: " << std::hex
-                  << parentRegion << std::endl;
+        int size = 1 + 24 + directoryName.size() + 1 + 4;
+        uint64_t freeEntry =
+            findFreeDirectoryEntry(diskPath, parentRegion, size);
+        if (freeEntry == 0) {
+            std::cerr << "Error: No free directory entry found." << std::endl;
+            return;
+        }
+        diskFile.seekp(freeEntry);
+        char entryType = 0x2; // Directory entry
+        diskFile.write(&entryType, sizeof(entryType));
+        uint64_t currentTime = getTime();
+        diskFile.write(reinterpret_cast<char *>(&currentTime),
+                       sizeof(currentTime));
+        diskFile.write(reinterpret_cast<char *>(&currentTime),
+                       sizeof(currentTime));
+        diskFile.write(reinterpret_cast<char *>(&currentTime),
+                       sizeof(currentTime));
+        diskFile.write(directoryName.c_str(), dirName.size());
+        diskFile.write("\0", 1); // Null terminator for the name
+        uint32_t regionNumber = findFreeRegion(diskPath, partitionIndex);
+        if (regionNumber == 0) {
+            std::cerr << "Error: No free region found. regionNumber was 0."
+                      << std::endl;
+            return;
+        }
+        diskFile.write(reinterpret_cast<char *>(&regionNumber),
+                       sizeof(regionNumber));
+        diskFile.seekp(regionNumber * 512);
+        char emptyDirEntry[512] = {0};
+        emptyDirEntry[0] = DIRECTORY_REGION;
+        diskFile.write(emptyDirEntry, sizeof(emptyDirEntry));
+
+        diskFile.seekp(regionNumber * 512 + 1);
+        diskFile.write(&entryType, sizeof(entryType));
+        diskFile.write(reinterpret_cast<char *>(&currentTime),
+                       sizeof(currentTime));
+        diskFile.write(reinterpret_cast<char *>(&currentTime),
+                       sizeof(currentTime));
+        diskFile.write(reinterpret_cast<char *>(&currentTime),
+                       sizeof(currentTime));
+        std::string currentName = ".";
+        diskFile.write(currentName.c_str(), currentName.size());
+        diskFile.write("\0", 1); // Null terminator for the name
+        diskFile.write(reinterpret_cast<char *>(&regionNumber),
+                       sizeof(regionNumber));
         return;
     }
+}
+
+uint64_t findFreeDirectoryEntry(const fs::path &diskPath, uint32_t startRegion,
+                                int sizeAtLeast) {
+    if (!fs::exists(diskPath)) {
+        std::cerr << "Error: Disk path does not exist." << std::endl;
+        return 0;
+    }
+
+    if (fs::is_directory(diskPath)) {
+        std::cerr << "Error: Disk path is a directory." << std::endl;
+        return 0;
+    }
+
+    if (fs::is_empty(diskPath)) {
+        std::cerr << "Error: Disk path is empty." << std::endl;
+        return 0;
+    }
+
+    std::fstream diskFile(diskPath,
+                          std::ios::in | std::ios::out | std::ios::binary);
+    if (!diskFile) {
+        std::cerr << "Error: Unable to open disk file." << std::endl;
+        return 0;
+    }
+
+    uint32_t currentRegion = startRegion;
+    diskFile.seekp(currentRegion * 512); // Go to the start of the directory
+    char regionData[512] = {0};
+    diskFile.read(regionData, sizeof(regionData));
+    int offset = 1;
+    while (true) {
+        char entryType = regionData[offset];
+        offset += 1; // Skip the entry type
+        if (entryType == 0x0) {
+            if (offset + sizeAtLeast > 508) {
+                uint32_t continueRegion =
+                    regionData[508] | (regionData[509] << 8) |
+                    (regionData[510] << 16) | (regionData[511] << 24);
+                if (continueRegion == 0) {
+                    std::cout << "No free entry found in the current region."
+                              << std::endl;
+                    diskFile.seekp(currentRegion * 512 + 508);
+                    uint32_t nextRegion = findFreeRegion(diskPath, 0);
+                    if (nextRegion == 0) {
+                        std::cerr << "Error: No free region found."
+                                  << std::endl;
+                        return 0;
+                    }
+                    diskFile.write(reinterpret_cast<char *>(&nextRegion),
+                                   sizeof(nextRegion));
+                    diskFile.seekp(nextRegion * 512);
+                    char emptyDirEntry[512] = {0};
+                    emptyDirEntry[0] = DIRECTORY_REGION;
+                    diskFile.write(emptyDirEntry, sizeof(emptyDirEntry));
+                    return nextRegion * 512 + 1;
+                } else {
+                    std::cout << "Continuing to next region: " << continueRegion
+                              << std::endl;
+                    diskFile.seekp(continueRegion * 512);
+                    diskFile.read(regionData, sizeof(regionData));
+                    currentRegion = continueRegion;
+                    offset = 1;
+                    continue;
+                }
+            } else {
+                return currentRegion * 512 + (offset - 1);
+            }
+        }
+        offset += 24; // Skip the time
+        while (regionData[offset] != '\0') {
+            offset++;
+        }
+        offset++;    // Skip the null terminator of the filename
+        offset += 4; // Skip the region number
+    }
+    return 0;
+}
+
+uint32_t findFreeRegion(const fs::path &diskPath, uint32_t partitionNumber) {
+    if (!fs::exists(diskPath)) {
+        std::cerr << "Error: Disk path does not exist." << std::endl;
+        return 0;
+    }
+
+    if (fs::is_directory(diskPath)) {
+        std::cerr << "Error: Disk path is a directory." << std::endl;
+        return 0;
+    }
+
+    if (fs::is_empty(diskPath)) {
+        std::cerr << "Error: Disk path is empty." << std::endl;
+        return 0;
+    }
+
+    std::fstream diskFile(diskPath,
+                          std::ios::in | std::ios::out | std::ios::binary);
+    if (!diskFile) {
+        std::cerr << "Error: Unable to open disk file." << std::endl;
+        return 0;
+    }
+
+    DriveInformation info = getDriveInformation(diskPath).value();
+    Partition partition = info.partitions[partitionNumber];
+    uint32_t currentRegion = partition.partitionRegion;
+
+    while (currentRegion <
+           partition.partitionRegion + partition.partitionSize) {
+        char byte;
+        diskFile.seekg(currentRegion * 512);
+        diskFile.read(&byte, sizeof(byte));
+        if (byte == EMPTY_REGION || byte == DELETED_REGION) {
+            std::cout << "Found free region: " << currentRegion << std::endl;
+            return currentRegion;
+        } else {
+            currentRegion++;
+        }
+    }
+    return 0;
 }

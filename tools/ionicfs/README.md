@@ -48,7 +48,7 @@ It is important that when you read a region, these bytes match:
 ### How to read a directory
 Firstly, make sure that the first byte is `0x2` for a directory region. A directory is just a list of structured **Directory Entries**. These follow this structure:
 * The **first byte** is the **type byte**, and following the guide from before, you can see the type of the file: whether it's empty, deleted, a directory or a file, just adding the `0x00` type, which in this context means it's the **end of the directory**
-* The following **32 bytes** are reserved for some useful times. These bytes are divided into:
+* The following **24 bytes** are reserved for some useful times. These bytes are divided into:
   * 8 bytes (`uint64`), that represent the **last time the file was accessed**
   * 8 bytes (`uint64`) that represent the **last time the file was edited**
   * 8 bytes (`uint64`) that represent the **time when the file was created**.
