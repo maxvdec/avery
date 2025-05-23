@@ -183,3 +183,17 @@ pub fn mapMemory(phys_addr: usize, size: usize) ?*u8 {
 
     return @ptrFromInt(virt_addr);
 }
+
+pub fn identityMap(phys_addr: usize, size: usize) u32 {
+    if (phys_addr % PAGE_SIZE != 0) return 0;
+
+    const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+    const virt_addr = phys_addr;
+
+    var i: usize = 0;
+    while (i < pages_needed) : (i += 1) {
+        mapPage(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, PAGE_PRESENT | PAGE_RW);
+    }
+
+    return virt_addr;
+}

@@ -28,30 +28,15 @@ pub const Position = struct {
 };
 
 pub const Framebuffer = struct {
-    framebufferTag: *const mutltiboot2.FramebufferTag,
+    framebufferTag: mutltiboot2.FramebufferTag,
     framebuffer_addr: u32,
 
-    pub fn init(bootInfo: *const mutltiboot2.BootInfo) Framebuffer {
-        const framebufferTag = mutltiboot2.getFramebufferTag(bootInfo);
-        if (!framebufferTag.second()) {
-            sys.panic("Framebuffer tag not found");
-        }
-
-        mutltiboot2.printFramebufferInfo(framebufferTag.first());
-        sys.delay(100);
-        const fb_addr = @as(usize, @intCast(framebufferTag.first().addr));
-        sys.delay(100);
-        const fb_size = framebufferTag.first().width * framebufferTag.first().height *
-            (framebufferTag.first().bpp / 8);
-        sys.delay(100);
-        out.printHex(fb_addr);
-        out.printHex(fb_size);
-        const fb_virt_addr = virtmem.mapMemory(fb_addr, fb_size).?;
-        const fb_virt_addr_int = @intFromPtr(fb_virt_addr);
-
+    pub fn init(framebufferTag: mutltiboot2.FramebufferTag) Framebuffer {
+        @setRuntimeSafety(false);
+        const virtAddr = virtmem.identityMap(@as(usize, @intCast(framebufferTag.addr)), framebufferTag.pitch * framebufferTag.height);
         return Framebuffer{
-            .framebufferTag = framebufferTag.first(),
-            .framebuffer_addr = fb_virt_addr_int,
+            .framebufferTag = framebufferTag,
+            .framebuffer_addr = virtAddr,
         };
     }
 
@@ -67,7 +52,6 @@ pub const Framebuffer = struct {
         const framebuffer_addr = self.framebuffer_addr + pixel_offset;
 
         const pixel_ptr: [*]u8 = @ptrFromInt(framebuffer_addr);
-        sys.delay(50);
         switch (fb.bpp) {
             32 => {
                 if (fb.framebuffer_type == 1) {
@@ -121,6 +105,51 @@ pub const Framebuffer = struct {
                 self.drawPixel(x, y, color);
             }
             x = pos.x;
+        }
+    }
+
+    pub fn fill(self: *const Framebuffer, color: Color) void {
+        const fb = self.framebufferTag;
+        var x: u32 = 0;
+        var y: u32 = 0;
+
+        while (y < fb.height) : (y += 1) {
+            while (x < fb.width) : (x += 1) {
+                self.drawPixel(x, y, color);
+            }
+            x = 0;
+        }
+    }
+
+    pub fn getWidth(self: *const Framebuffer) u32 {
+        return self.framebufferTag.width;
+    }
+
+    pub fn getHeight(self: *const Framebuffer) u32 {
+        return self.framebufferTag.height;
+    }
+
+    pub fn drawCircle(self: *const Framebuffer, center: Position, radius: u32, color: Color) void {
+        var x: i32 = 0;
+        var y: i32 = @intCast(radius);
+        var d: i32 = 1 - @as(i32, @intCast(radius));
+
+        while (x <= y) : (x += 1) {
+            self.drawPixel(center.x + x, center.y + y, color);
+            self.drawPixel(center.x - x, center.y + y, color);
+            self.drawPixel(center.x + x, center.y - y, color);
+            self.drawPixel(center.x - x, center.y - y, color);
+            self.drawPixel(center.x + y, center.y + x, color);
+            self.drawPixel(center.x - y, center.y + x, color);
+            self.drawPixel(center.x + y, center.y - x, color);
+            self.drawPixel(center.x - y, center.y - x, color);
+
+            if (d < 0) {
+                d += 2 * x + 3;
+            } else {
+                d += 2 * (x - y) + 5;
+                y -= 1;
+            }
         }
     }
 };

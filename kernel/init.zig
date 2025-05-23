@@ -57,17 +57,19 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
 
     memoryMap = memMap.first().*;
 
+    const fbPtr = multiboot2.getFramebufferTag(bootInfo);
+    if (fbPtr.second() == false) {
+        sys.panic("No framebuffer found.");
+    }
+
+    const fbTag = fbPtr.first().*;
+
     physmem.init(memMap.first(), getKernelEnd());
     virtmem.init();
 
-    const fb = framebuffer.Framebuffer.init(bootInfo);
-    fb.drawLineAccrossScreen();
-    fb.drawRect(framebuffer.Position.from(0, 0), 100, 100, framebuffer.Color.from(244, 14, 67));
-
-    out.println("The Avery Kernel");
-    out.println("Created by Max Van den Eynde");
-    out.println("Pre-Alpha Version: paph-0.01\n");
-    fusion.main(getMemoryMap());
+    const fb = framebuffer.Framebuffer.init(fbTag);
+    fb.fill(framebuffer.Color.from(0, 100, 100));
+    //fb.drawCircle(framebuffer.Position.from(100, 100), 50, framebuffer.Color.from(255, 0, 0));
 
     while (true) {}
 }

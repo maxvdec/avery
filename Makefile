@@ -61,7 +61,8 @@ clean:
 .PHONY: all clean run stdio terminal
 
 run: avery.iso
-	qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -serial stdio 
+	@clear
+	@qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -serial stdio 
 
 nographic:
 	qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -nographic
