@@ -118,3 +118,10 @@ pub fn panic(msg: []const u8) noreturn {
     out.println("Please report this to the developers.\n");
     while (true) {}
 }
+
+pub fn delay(iterations: u64) void {
+    var i: u64 = 0;
+    while (i < iterations) : (i += 1) {
+        asm volatile ("nop");
+    }
+}

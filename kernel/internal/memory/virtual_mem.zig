@@ -169,3 +169,17 @@ fn getPageDirectoryIndex(virt_addr: usize) usize {
 fn getPageTableIndex(virt_addr: usize) usize {
     return (virt_addr >> 12) & 0x3FF;
 }
+
+pub fn mapMemory(phys_addr: usize, size: usize) ?*u8 {
+    if (phys_addr % PAGE_SIZE != 0) return null;
+
+    const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+    const virt_addr = allocVirtual(size, PAGE_PRESENT | PAGE_RW) orelse return null;
+
+    var i: usize = 0;
+    while (i < pages_needed) : (i += 1) {
+        mapPage(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, PAGE_PRESENT | PAGE_RW);
+    }
+
+    return @ptrFromInt(virt_addr);
+}

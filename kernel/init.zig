@@ -16,7 +16,6 @@ const alloc = @import("allocator");
 const mem = @import("memory");
 const fusion = @import("fusion");
 const ata = @import("ata");
-const fat32 = @import("fat32");
 const framebuffer = @import("framebuffer");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
@@ -39,6 +38,7 @@ pub fn getMemoryMap() multiboot2.MemoryMapTag {
 export fn kernel_main(magic: u32, addr: u32) noreturn {
     @setRuntimeSafety(false);
     out.initOutputs();
+    out.switchToSerial();
     out.clear();
     if (magic != MULTIBOOT2_HEADER_MAGIC) {
         sys.panic("Bootloader mismatch. Try using Multiboot2 or reconfigure your bootloader.");
@@ -57,13 +57,12 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
 
     memoryMap = memMap.first().*;
 
-    const framebufferTag = multiboot2.getFramebufferTag(bootInfo);
-    if (framebufferTag.second() == false) {
-        sys.panic("No framebuffer found.");
-    }
-
     physmem.init(memMap.first(), getKernelEnd());
     virtmem.init();
+
+    const fb = framebuffer.Framebuffer.init(bootInfo);
+    fb.drawLineAccrossScreen();
+    fb.drawRect(framebuffer.Position.from(0, 0), 100, 100, framebuffer.Color.from(244, 14, 67));
 
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
