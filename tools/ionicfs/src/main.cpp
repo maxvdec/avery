@@ -9,7 +9,56 @@
 
 namespace fs = std::filesystem;
 
+std::string getVersion() {
+    std::string versionStr = IONICFS_VERSION;
+    std::string formattedVersion = versionStr.substr(0, 1) + "." +
+                                   versionStr.substr(1, 1) + "." +
+                                   versionStr.substr(2, 1);
+    return formattedVersion;
+}
+
 int main(int argc, char *argv[]) {
+    if (argv[1] == nullptr) {
+        std::cout << "IonicFS Tooling" << std::endl;
+        std::cout << "Created by Max Van den Eynde for the Avery project."
+                  << std::endl;
+        std::cout << "Version: " << getVersion() << std::endl;
+        std::cout << "Copyright (c) 2025 Max Van den Eynde" << std::endl;
+        return 0;
+    }
+    if (strcmp(argv[1], "help") == 0) {
+        std::cout << "Usage: " << argv[0] << " <command> [options]"
+                  << std::endl;
+        std::cout << "Commands:" << std::endl;
+        std::cout << "  format <disk_path>" << std::endl;
+        std::cout << "  info <disk_path>" << std::endl;
+        std::cout << "  list <disk_path> [partition_index]" << std::endl;
+        std::cout << "  mkdir <disk_path> <dir_name> [partition_index]"
+                  << std::endl;
+        std::cout << "  copy <disk_path> <file_name> <dest_path> "
+                     "[partition_index]"
+                  << std::endl;
+        std::cout << "  read <disk_path> <file_name> [partition_index]"
+                  << std::endl;
+        std::cout << "  read -hex <disk_path> <file_name> "
+                     "[partition_index]"
+                  << std::endl;
+        std::cout << "  rm <disk_path> <file_name> [partition_index]"
+                  << std::endl;
+        std::cout << "  rm-dir <disk_path> <dir_name> [partition_index]"
+                  << std::endl;
+        std::cout << "  boot <disk_path> <boot_file_path>" << std::endl;
+        std::cout << "  version" << std::endl;
+        std::cout << "  help" << std::endl;
+        return 0;
+    } else if (strcmp(argv[1], "version") == 0) {
+        std::cout << "IonicFS Tooling" << std::endl;
+        std::cout << "Created by Max Van den Eynde for the Avery project."
+                  << std::endl;
+        std::cout << "Version: " << getVersion() << std::endl;
+        std::cout << "Copyright (c) 2025 Max Van den Eynde" << std::endl;
+        return 0;
+    }
     if (argc <= 2) {
         std::cerr << "Usage: " << argv[0] << " <disk_path>" << std::endl;
         return 1;
@@ -90,6 +139,29 @@ int main(int argc, char *argv[]) {
             }
             readFile(diskPath, fileName, partitionIndex, false);
         }
+    } else if (strcmp(argv[1], "rm") == 0) {
+        std::string path(argv[2]);
+        fs::path diskPath(path);
+        std::string fileName(argv[3]);
+        int partitionIndex = 0;
+        if (argc > 4) {
+            partitionIndex = std::stoi(argv[4]);
+        }
+        removeFile(diskPath, fileName, partitionIndex);
+    } else if (strcmp(argv[1], "rm-dir") == 0) {
+        std::string path(argv[2]);
+        fs::path diskPath(path);
+        std::string dirName(argv[3]);
+        int partitionIndex = 0;
+        if (argc > 4) {
+            partitionIndex = std::stoi(argv[4]);
+        }
+        removeDirectory(diskPath, dirName, partitionIndex);
+    } else if (strcmp(argv[1], "boot") == 0) {
+        std::string path(argv[2]);
+        fs::path diskPath(path);
+        std::string bootPath(argv[3]);
+        boot(diskPath, bootPath);
     } else {
         std::cerr << "Unknown command: " << argv[1] << std::endl;
         std::cerr << "Usage: " << argv[0] << " <disk_path>" << std::endl;

@@ -403,7 +403,7 @@ uint64_t findFreeDirectoryEntry(const fs::path &diskPath, uint32_t startRegion,
     while (true) {
         char entryType = regionData[offset];
         offset += 1; // Skip the entry type
-        if (entryType == 0x0) {
+        if (entryType == EMPTY_REGION || entryType == DELETED_REGION) {
             if (offset + sizeAtLeast > 508) {
                 uint32_t continueRegion =
                     regionData[508] | (regionData[509] << 8) |
@@ -548,4 +548,128 @@ uint32_t findFileInDirectory(const fs::path &diskPath,
 
     std::cerr << "Error: File not found." << std::endl;
     return {};
+}
+
+void eliminateEntry(std::fstream &diskFile, uint32_t region,
+                    const std::string &entryName) {
+    diskFile.seekp(region * 512);
+    uint32_t nextRegion;
+    int offset = 1;
+    int entryTypeOffset = 0;
+    char regionData[512] = {0};
+    diskFile.read(regionData, sizeof(regionData));
+    while (true) {
+        char entryType = regionData[offset];
+        entryTypeOffset = offset;
+        offset += 1;
+        if (entryType == EMPTY_REGION) {
+            nextRegion = regionData[508] | (regionData[509] << 8) |
+                         (regionData[510] << 16) | (regionData[511] << 24);
+            if (nextRegion == 0) {
+                std::cout << "No free entry found in the current region."
+                          << std::endl;
+                return;
+            } else {
+                if (nextRegion == 0) {
+                    std::cout << "No free entry found in the current region."
+                              << std::endl;
+                    return;
+                }
+                diskFile.seekp(nextRegion * 512);
+                diskFile.read(regionData, sizeof(regionData));
+                offset = 1;
+                continue;
+            }
+            break;
+        }
+        offset += 24; // Skip the time
+        std::string currentName;
+        while (regionData[offset] != '\0') {
+            currentName += regionData[offset];
+            offset++;
+        }
+        if (currentName == entryName) {
+            regionData[entryTypeOffset] = DELETED_REGION;
+            diskFile.seekp(region * 512);
+            diskFile.write(regionData, sizeof(regionData));
+            return;
+        }
+
+        offset++;    // Skip the null terminator of the filename
+        offset += 4; // Skip the region number
+    }
+}
+
+void removeRecursive(const fs::path &diskPath, uint32_t directoryRegion) {
+    Directory directory = parseDirectory(diskPath, directoryRegion);
+    if (!fs::exists(diskPath)) {
+        std::cerr << "Error: Disk path does not exist." << std::endl;
+        return;
+    }
+
+    if (fs::is_directory(diskPath)) {
+        std::cerr << "Error: Disk path is a directory." << std::endl;
+        return;
+    }
+
+    if (fs::is_empty(diskPath)) {
+        std::cerr << "Error: Disk path is empty." << std::endl;
+        return;
+    }
+
+    std::fstream diskFile(diskPath,
+                          std::ios::in | std::ios::out | std::ios::binary);
+    if (!diskFile) {
+        std::cerr << "Error: Unable to open disk file." << std::endl;
+        return;
+    }
+    for (const auto &entry : directory.entries) {
+        if (entry.isDirectory) {
+            removeRecursive(diskPath, entry.region);
+        } else {
+            eliminateEntry(diskFile, directoryRegion, entry.name);
+        }
+    }
+}
+
+void boot(const fs::path &diskPath, const fs::path &bootPath) {
+    if (!fs::exists(diskPath)) {
+        std::cerr << "Error: Disk path does not exist." << std::endl;
+        return;
+    }
+
+    if (fs::is_directory(diskPath)) {
+        std::cerr << "Error: Disk path is a directory." << std::endl;
+        return;
+    }
+
+    if (fs::is_empty(diskPath)) {
+        std::cerr << "Error: Disk path is empty." << std::endl;
+        return;
+    }
+
+    std::fstream diskFile(diskPath,
+                          std::ios::in | std::ios::out | std::ios::binary);
+    if (!diskFile) {
+        std::cerr << "Error: Unable to open disk file." << std::endl;
+        return;
+    }
+
+    std::ifstream bootFile(bootPath, std::ios::binary);
+    if (!bootFile) {
+        std::cerr << "Error: Unable to open boot file." << std::endl;
+        return;
+    }
+    std::vector<char> buffer(std::istreambuf_iterator<char>(bootFile), {});
+    bootFile.close();
+    if (buffer.empty()) {
+        std::cerr << "Error: Boot file is empty." << std::endl;
+        return;
+    }
+    if (buffer.size() > 400) {
+        std::cerr << "Error: Boot file is too large." << std::endl;
+        return;
+    }
+    diskFile.seekp(0);
+    diskFile.write(buffer.data(), buffer.size());
 }

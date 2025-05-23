@@ -70,5 +70,13 @@ void readFile(const fs::path &diskPath, const std::string &fileName,
               int partitionIndex, bool hex = false);
 uint32_t findFileInDirectory(const fs::path &diskPath,
                              const std::string &fileName, uint32_t region);
+void removeFile(const fs::path &diskPath, const std::string &fileName,
+                int partitionIndex);
+void removeDirectory(const fs::path &diskPath, const std::string &dirName,
+                     int partitionIndex);
+void eliminateEntry(std::fstream &diskFile, uint32_t region,
+                    const std::string &entryName);
+void removeRecursive(const fs::path &diskPath, uint32_t directoryRegion);
+void boot(const fs::path &diskPath, const fs::path &bootPath);
 
 #endif // COMMANDS_HPP
