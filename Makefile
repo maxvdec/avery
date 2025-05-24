@@ -1,6 +1,7 @@
 ZIG = zig build
 AS = nasm
 LD = x86_64-elf-ld
+OBJCOPY = x86_64-elf-objcopy
 
 ZIGFLAGS = -target x86-freestanding-none -OReleaseSafe -fno-stack-check 
 LDFLAGS = -m elf_i386 -T linker.ld -nostdlib
@@ -13,6 +14,7 @@ ISO_BOOT = $(ISO_DIR)/boot
 ISO_GRUB = $(ISO_BOOT)/grub
 GRUB_CFG = grub.cfg
 ZIG_DIR = zig-out/build/obj
+BITFONTS = $(shell find $(KERNEL_DIR) -name '*.bitfnt') # Standard PSF fonts
 
 KERNEL_ZIG_OBJ := \
 	$(BUILD_DIR)/init.o \
@@ -25,6 +27,7 @@ KERNEL_ZIG_OBJ := \
 KERNEL_ASM_SRCS := $(shell find $(KERNEL_DIR) -name '*.asm')
 KERNEL_ASM_OBJS := $(patsubst $(KERNEL_DIR)/%.asm,$(BUILD_DIR)/%.o,$(KERNEL_ASM_SRCS))
 BOOT_OBJ = $(BUILD_DIR)/boot.o
+FONTS_OBJ = $(BUILD_DIR)/fonts.o
 
 all: avery.iso
 
@@ -42,7 +45,11 @@ $(BOOT_OBJ): $(BOOT_ASM)
 	@mkdir -p $(dir $@)
 	$(AS) -f elf32 $< -o $@
 
-$(BUILD_DIR)/avery.bin: $(KERNEL_ZIG_OBJ) $(KERNEL_ASM_OBJS) $(BOOT_OBJ)
+$(FONTS_OBJ): $(BITFONTS)
+	@mkdir -p $(dir $@)
+	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
+
+$(BUILD_DIR)/avery.bin: $(KERNEL_ZIG_OBJ) $(KERNEL_ASM_OBJS) $(BOOT_OBJ) $(FONTS_OBJ)
 	$(ZIG)
 	$(LD) $(LDFLAGS) -o $@ $^
 	@echo "Kernel binary created at $@"

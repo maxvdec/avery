@@ -1,7 +1,10 @@
-const mutltiboot2 = @import("multiboot2");
+const multiboot2 = @import("multiboot2");
 const sys = @import("system");
 const out = @import("output");
 const virtmem = @import("virtual_mem");
+const alloc = @import("allocator");
+const pmm = @import("physical_mem");
+const font = @import("font");
 
 pub const Color = struct {
     r: u8,
@@ -10,11 +13,32 @@ pub const Color = struct {
     a: u8 = 255,
 
     pub fn from(r: u8, g: u8, b: u8) Color {
-        return Color{ .r = r, .g = g, .b = b };
+        return Color{ .r = r, .g = g, .b = b, .a = 255 };
     }
 
-    pub fn setAlpha(self: *const Color, alpha: u8) void {
+    pub fn setAlpha(self: *Color, alpha: u8) void {
         self.a = alpha;
+    }
+
+    pub fn fromVga(color: out.VgaTextColor) [3]u8 {
+        switch (color) {
+            .Black => return [3]u8{ 0, 0, 0 },
+            .Blue => return [3]u8{ 0, 0, 255 },
+            .Green => return [3]u8{ 0, 255, 0 },
+            .Cyan => return [3]u8{ 0, 255, 255 },
+            .Red => return [3]u8{ 255, 0, 0 },
+            .Magenta => return [3]u8{ 255, 0, 255 },
+            .Brown => return [3]u8{ 165, 42, 42 },
+            .LightGray => return [3]u8{ 211, 211, 211 },
+            .DarkGray => return [3]u8{ 169, 169, 169 },
+            .LightBlue => return [3]u8{ 173, 216, 230 },
+            .LightGreen => return [3]u8{ 144, 238, 144 },
+            .LightCyan => return [3]u8{ 224, 255, 255 },
+            .LightRed => return [3]u8{ 255, 182, 193 },
+            .Pink => return [3]u8{ 255, 192, 203 },
+            .Yellow => return [3]u8{ 255, 255, 0 },
+            .White => return [3]u8{ 255, 255, 255 },
+        }
     }
 };
 
@@ -27,31 +51,57 @@ pub const Position = struct {
     }
 };
 
-pub const Framebuffer = struct {
-    framebufferTag: mutltiboot2.FramebufferTag,
-    framebuffer_addr: u32,
+extern fn memcpy(dest: [*]u8, src: [*]u8, size: usize) [*]u8;
 
-    pub fn init(framebufferTag: mutltiboot2.FramebufferTag) Framebuffer {
+pub const Framebuffer = struct {
+    framebufferTag: multiboot2.FramebufferTag,
+    framebuffer_addr: u32,
+    backbuffer: [*]u8 = undefined,
+
+    pub fn init(framebufferTag: multiboot2.FramebufferTag) Framebuffer {
         @setRuntimeSafety(false);
-        const virtAddr = virtmem.identityMap(@as(usize, @intCast(framebufferTag.addr)), framebufferTag.pitch * framebufferTag.height);
+        const framebufferSize = framebufferTag.pitch * framebufferTag.height;
+
+        const virtFramebufferAddr = virtmem.mapKernelMemory(@as(usize, @intCast(framebufferTag.addr)), framebufferSize);
+
+        const backbufferVirtAddr = virtmem.allocVirtual(framebufferSize, virtmem.PAGE_PRESENT | virtmem.PAGE_RW) orelse {
+            sys.panic("Failed to allocate virtual memory for framebuffer backbuffer");
+        };
+
+        const backbufferSlice: [*]u8 = @ptrFromInt(backbufferVirtAddr);
+        for (0..framebufferSize) |i| {
+            backbufferSlice[i] = 0; // Initialize backbuffer to zero
+        }
+
         return Framebuffer{
             .framebufferTag = framebufferTag,
-            .framebuffer_addr = virtAddr,
+            .framebuffer_addr = virtFramebufferAddr,
+            .backbuffer = backbufferSlice,
         };
     }
 
-    pub fn drawPixel(self: *const Framebuffer, x: u32, y: u32, color: Color) void {
+    pub fn presentBackbuffer(self: *const Framebuffer) void {
+        @setRuntimeSafety(false);
+
+        const framebuffer_ptr: [*]u8 = @ptrFromInt(self.framebuffer_addr);
+        const framebufferSize = self.framebufferTag.pitch * self.framebufferTag.height;
+
+        _ = memcpy(framebuffer_ptr, self.backbuffer, framebufferSize);
+    }
+
+    pub fn drawPixel(self: *const Framebuffer, pos: Position, color: Color) void {
+        @setRuntimeSafety(false);
+
         const fb = self.framebufferTag;
 
-        if (x >= fb.width or y >= fb.height) {
+        if (pos.x >= fb.width or pos.y >= fb.height) {
             return;
         }
 
         const bytes_per_pixel = fb.bpp / 8;
-        const pixel_offset = y * fb.pitch + x * bytes_per_pixel;
-        const framebuffer_addr = self.framebuffer_addr + pixel_offset;
+        const pixel_offset = (pos.y * fb.pitch) + (pos.x * bytes_per_pixel);
 
-        const pixel_ptr: [*]u8 = @ptrFromInt(framebuffer_addr);
+        const pixel_ptr: [*]u8 = self.backbuffer + pixel_offset;
         switch (fb.bpp) {
             32 => {
                 if (fb.framebuffer_type == 1) {
@@ -88,67 +138,60 @@ pub const Framebuffer = struct {
         }
     }
 
-    pub fn drawLineAccrossScreen(self: *const Framebuffer) void {
+    pub fn drawTestLine(self: *const Framebuffer) void {
         const fb = self.framebufferTag;
         var x: u32 = 0;
         while (x < fb.width) : (x += 1) {
-            self.drawPixel(x, fb.height / 2, Color.from(255, 0, 0));
+            self.drawPixel(Position.from(x, fb.height / 2), Color.from(255, 0, 0));
         }
+        self.presentBackbuffer();
     }
 
-    pub fn drawRect(self: *const Framebuffer, pos: Position, width: u32, height: u32, color: Color) void {
-        var x: u32 = pos.x;
-        var y: u32 = pos.y;
+    pub fn fillScreen(self: *const Framebuffer, color: Color) void {
+        @setRuntimeSafety(false);
 
-        while (y < height) : (y += 1) {
-            while (x < width) : (x += 1) {
-                self.drawPixel(x, y, color);
-            }
-            x = pos.x;
-        }
-    }
-
-    pub fn fill(self: *const Framebuffer, color: Color) void {
         const fb = self.framebufferTag;
-        var x: u32 = 0;
-        var y: u32 = 0;
+        const total_pixels = fb.width * fb.height;
 
-        while (y < fb.height) : (y += 1) {
-            while (x < fb.width) : (x += 1) {
-                self.drawPixel(x, y, color);
-            }
-            x = 0;
+        for (0..total_pixels) |i| {
+            const x = i % fb.width;
+            const y = i / fb.width;
+            self.drawPixel(Position.from(x, y), color);
         }
+
+        self.presentBackbuffer();
     }
 
-    pub fn getWidth(self: *const Framebuffer) u32 {
-        return self.framebufferTag.width;
-    }
+    pub fn drawChar(self: *const Framebuffer, pos: Position, fnt: *const font.Font, char_code: u32, fg_color: Color, bg_color: ?Color) void {
+        @setRuntimeSafety(false);
 
-    pub fn getHeight(self: *const Framebuffer) u32 {
-        return self.framebufferTag.height;
-    }
+        out.preserveMode();
+        out.switchToSerial();
 
-    pub fn drawCircle(self: *const Framebuffer, center: Position, radius: u32, color: Color) void {
-        var x: i32 = 0;
-        var y: i32 = @intCast(radius);
-        var d: i32 = 1 - @as(i32, @intCast(radius));
+        const glyph_data = fnt.getGlyph(char_code) orelse return;
+        const font_width = fnt.header.width;
+        const font_height = fnt.header.height;
 
-        while (x <= y) : (x += 1) {
-            self.drawPixel(center.x + x, center.y + y, color);
-            self.drawPixel(center.x - x, center.y + y, color);
-            self.drawPixel(center.x + x, center.y - y, color);
-            self.drawPixel(center.x - x, center.y - y, color);
-            self.drawPixel(center.x + y, center.y + x, color);
-            self.drawPixel(center.x - y, center.y + x, color);
-            self.drawPixel(center.x + y, center.y - x, color);
-            self.drawPixel(center.x - y, center.y - x, color);
+        var y: u32 = 0;
+        while (y < font_height) : (y += 1) {
+            const bytes_per_row = (font_width + 7) / 8;
+            const row_offset = y * bytes_per_row;
 
-            if (d < 0) {
-                d += 2 * x + 3;
-            } else {
-                d += 2 * (x - y) + 5;
-                y -= 1;
+            var x: u32 = 0;
+            while (x < font_width) : (x += 1) {
+                const byte_index = row_offset + (x / 8);
+                const bit_index = 7 - (x % 8);
+                const pixel_set = (glyph_data[byte_index] >> @intCast(bit_index)) & 1;
+
+                const pixel_pos = Position.from(pos.x + x, pos.y + y);
+
+                if (bg_color) |bg| {
+                    self.drawPixel(pixel_pos, bg);
+                }
+
+                if (pixel_set == 1) {
+                    self.drawPixel(pixel_pos, fg_color);
+                }
             }
         }
     }

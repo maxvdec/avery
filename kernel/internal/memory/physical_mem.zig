@@ -119,3 +119,19 @@ pub fn freePage(addr: usize) void {
         bitmapClear(page);
     }
 }
+
+pub fn allocPages(count: usize) ?usize {
+    @setRuntimeSafety(false);
+    const pages_needed = count;
+    var pages: []usize = undefined;
+    for (0..pages_needed) |i| {
+        const page = allocPage() orelse {
+            for (0..i) |j| {
+                freePage(pages[j]);
+            }
+            return null;
+        };
+        pages[i] = page;
+    }
+    return pages[0];
+}

@@ -17,6 +17,8 @@ const mem = @import("memory");
 const fusion = @import("fusion");
 const ata = @import("ata");
 const framebuffer = @import("framebuffer");
+const font = @import("font");
+const terminal = @import("terminal");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -39,15 +41,19 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     @setRuntimeSafety(false);
     out.initOutputs();
     out.switchToSerial();
-    out.clear();
     if (magic != MULTIBOOT2_HEADER_MAGIC) {
         sys.panic("Bootloader mismatch. Try using Multiboot2 or reconfigure your bootloader.");
     }
     gdt.init();
+    out.println("GDT initialized.");
     idt.init();
+    out.println("IDT initialized.");
     isr.init();
+    out.println("ISR initialized.");
     asm volatile ("sti");
+    out.println("Interrupts enabled.");
     irq.init();
+    out.println("IRQ initialized.");
 
     const bootInfo = multiboot2.getBootInfo(addr);
     const memMap = multiboot2.getMemoryMapTag(bootInfo);
@@ -56,6 +62,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     }
 
     memoryMap = memMap.first().*;
+    out.println("Memory map found.");
 
     const fbPtr = multiboot2.getFramebufferTag(bootInfo);
     if (fbPtr.second() == false) {
@@ -63,13 +70,30 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     }
 
     const fbTag = fbPtr.first().*;
+    out.println("Framebuffer found.");
 
     physmem.init(memMap.first(), getKernelEnd());
     virtmem.init();
 
     const fb = framebuffer.Framebuffer.init(fbTag);
-    fb.fill(framebuffer.Color.from(0, 100, 100));
-    //fb.drawCircle(framebuffer.Position.from(100, 100), 50, framebuffer.Color.from(255, 0, 0));
+    const colorData = framebuffer.Color.fromVga(out.VgaTextColor.Green);
+    out.printn(colorData[0]);
+    out.printn(colorData[1]);
+    out.printn(colorData[2]);
+    const color = framebuffer.Color.from(colorData[0], colorData[1], colorData[2]);
+    fb.fillScreen(color);
+    fb.drawTestLine();
+    const fnt = font.Font.init();
+    var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
 
-    while (true) {}
+    out.switchToGraphics(&fbTerminal);
+    out.clear();
+    out.println("The Avery Kernel");
+    out.println("Created by Max Van den Eynde");
+    out.println("Pre-Alpha Version: paph-0.02");
+
+    while (true) {
+        fbTerminal.updateCursor();
+        sys.delay(50);
+    }
 }

@@ -1,5 +1,6 @@
 const mem = @import("memory");
 const pmm = @import("physical_mem");
+const out = @import("output");
 const PAGE_SIZE = 4096;
 
 pub const PAGE_PRESENT = 1 << 0;
@@ -170,29 +171,45 @@ fn getPageTableIndex(virt_addr: usize) usize {
     return (virt_addr >> 12) & 0x3FF;
 }
 
-pub fn mapMemory(phys_addr: usize, size: usize) ?*u8 {
-    if (phys_addr % PAGE_SIZE != 0) return null;
-
-    const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-    const virt_addr = allocVirtual(size, PAGE_PRESENT | PAGE_RW) orelse return null;
-
-    var i: usize = 0;
-    while (i < pages_needed) : (i += 1) {
-        mapPage(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, PAGE_PRESENT | PAGE_RW);
-    }
-
-    return @ptrFromInt(virt_addr);
-}
-
-pub fn identityMap(phys_addr: usize, size: usize) u32 {
+pub fn mapMemory(phys_addr: usize, size: usize) u32 {
     if (phys_addr % PAGE_SIZE != 0) return 0;
 
     const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-    const virt_addr = phys_addr;
+    const flags = PAGE_PRESENT | PAGE_RW | PAGE_USER;
+
+    const virt_addr = allocVirtual(size, flags) orelse return 0;
 
     var i: usize = 0;
     while (i < pages_needed) : (i += 1) {
-        mapPage(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, PAGE_PRESENT | PAGE_RW);
+        out.println("Mapping page ");
+        out.printn(i);
+        out.print(" of ");
+        out.printn(pages_needed);
+        mapPage(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, flags);
+        out.print("Mapped physical address ");
+        out.printHex(phys_addr + i * PAGE_SIZE);
+        out.print(" to virtual address ");
+        out.printHex(virt_addr + i * PAGE_SIZE);
+        out.print("\n");
+    }
+
+    return virt_addr;
+}
+
+pub const KERNEL_MEM_BASE: usize = 0xC0000000;
+
+pub fn mapKernelMemory(phys_addr: usize, size: usize) u32 {
+    if (phys_addr % PAGE_SIZE != 0) return 0;
+
+    const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+    const flags = PAGE_PRESENT | PAGE_RW | PAGE_USER;
+
+    const virt_addr = KERNEL_MEM_BASE + next_free_virt;
+    next_free_virt += pages_needed * PAGE_SIZE;
+
+    var i: usize = 0;
+    while (i < pages_needed) : (i += 1) {
+        mapPage(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, flags);
     }
 
     return virt_addr;
