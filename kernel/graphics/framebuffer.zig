@@ -70,7 +70,7 @@ pub const Framebuffer = struct {
 
         const backbufferSlice: [*]u8 = @ptrFromInt(backbufferVirtAddr);
         for (0..framebufferSize) |i| {
-            backbufferSlice[i] = 0; // Initialize backbuffer to zero
+            backbufferSlice[i] = 0;
         }
 
         return Framebuffer{

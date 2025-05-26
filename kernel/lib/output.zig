@@ -69,7 +69,7 @@ pub fn print(string: []const u8) void {
     } else if (mode == OutputMode.VgaText) {
         vgaTxt.printStr(stdStr);
     } else if (mode == OutputMode.Graphics) {
-        term.putString(stdStr);
+        term.putString(string);
         term.refresh();
     }
 }
@@ -94,8 +94,8 @@ pub fn println(string: []const u8) void {
         vgaTxt.printStr(stdStr);
         vgaTxt.printStr(str.make("\n"));
     } else if (mode == OutputMode.Graphics) {
-        term.putString(stdStr);
-        term.putString(str.make("\n"));
+        term.putString(string);
+        term.putChar('\n');
         term.refresh();
     }
 }
@@ -188,7 +188,7 @@ pub fn printstr(string: str.String) void {
     } else if (mode == OutputMode.VgaText) {
         vgaTxt.printStr(string);
     } else if (mode == OutputMode.Graphics) {
-        term.putString(string);
+        term.putString(string.iterate());
         term.refresh();
     }
 }

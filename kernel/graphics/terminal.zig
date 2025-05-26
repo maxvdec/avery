@@ -159,25 +159,24 @@ pub const FramebufferTerminal = struct {
             '\x08' => self.backspace(),
             0x7F => self.backspace(),
             ' '...0x7E => {
-                if (self.cursor_x >= self.max_cols) {
-                    self.newline();
-                }
-
                 self.drawCharAtCursor(char);
                 self.cursor_x += 1;
-            },
-            else => {
                 if (self.cursor_x >= self.max_cols) {
                     self.newline();
                 }
+            },
+            else => {
                 self.drawCharAtCursor('?');
                 self.cursor_x += 1;
+                if (self.cursor_x >= self.max_cols) {
+                    self.newline();
+                }
             },
         }
     }
 
-    pub fn putString(self: *FramebufferTerminal, string: str.String) void {
-        for (string.iterate()) |char| {
+    pub fn putString(self: *FramebufferTerminal, string: []const u8) void {
+        for (string) |char| {
             self.putChar(char);
         }
         self.refresh();

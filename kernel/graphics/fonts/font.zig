@@ -1,3 +1,5 @@
+const out = @import("output");
+
 const PsfHeader = struct {
     magic: u32,
     version: u32,

@@ -64,6 +64,10 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     memoryMap = memMap.first().*;
     out.println("Memory map found.");
 
+    physmem.init(memMap.first(), getKernelEnd());
+    virtmem.init();
+    out.println("Physical and virtual memory initialized.");
+
     const fbPtr = multiboot2.getFramebufferTag(bootInfo);
     if (fbPtr.second() == false) {
         sys.panic("No framebuffer found.");
@@ -72,25 +76,14 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     const fbTag = fbPtr.first().*;
     out.println("Framebuffer found.");
 
-    physmem.init(memMap.first(), getKernelEnd());
-    virtmem.init();
-
     const fb = framebuffer.Framebuffer.init(fbTag);
-    const colorData = framebuffer.Color.fromVga(out.VgaTextColor.Green);
-    out.printn(colorData[0]);
-    out.printn(colorData[1]);
-    out.printn(colorData[2]);
-    const color = framebuffer.Color.from(colorData[0], colorData[1], colorData[2]);
-    fb.fillScreen(color);
-    fb.drawTestLine();
     const fnt = font.Font.init();
     var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
 
     out.switchToGraphics(&fbTerminal);
-    out.clear();
-    out.println("The Avery Kernel");
-    out.println("Created by Max Van den Eynde");
-    out.println("Pre-Alpha Version: paph-0.02");
+    //out.println("The Avery Kernel");
+    //out.println("Created by Max Van den Eynde");
+    //out.println("Pre-Alpha Version: paph-0.02");
 
     while (true) {
         fbTerminal.updateCursor();
