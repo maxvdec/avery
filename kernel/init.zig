@@ -49,48 +49,50 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
         sys.panic("Bootloader mismatch. Try using Multiboot2 or reconfigure your bootloader.");
     }
     gdt.init();
-    out.println("Setting up the GDT...");
     idt.init();
-    out.println("Setting up the IDT...");
     isr.init();
-    out.println("Setting up the ISR...");
     asm volatile ("sti");
     irq.init();
-    out.println("Setting up the IRQs...");
+    out.println("All core services initialized.");
 
     const bootInfo = multiboot2.getBootInfo(addr);
     const memMap = multiboot2.getMemoryMapTag(bootInfo);
-    out.println("Getting the memory map...");
-    if (memMap.second() == false) {
+    if (memMap.isPresent() == false) {
         sys.panic("No memory map found.");
     }
 
-    memoryMap = memMap.first().*;
+    memoryMap = memMap.unwrap().*;
 
     const fbPtr = multiboot2.getFramebufferTag(bootInfo);
-    if (fbPtr.second() == false) {
+    if (fbPtr.isPresent() == false) {
         sys.panic("No framebuffer found.");
     }
 
-    const fbTag = fbPtr.first().*;
+    const fbTag = fbPtr.unwrap().*;
 
-    physmem.init(memMap.first(), getKernelEnd());
+    physmem.init(memMap.unwrap(), getKernelEnd());
+    out.println("Physical memory initialized.");
     virtmem.init();
-    out.println("Initializing physical and virtual memory...");
+    out.println("Virtual memory initialized.");
 
     const fb = framebuffer.Framebuffer.init(fbTag);
-    out.println("Initializing the framebuffer...");
     const fnt = font.Font.init();
     var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
-    fbTerminal.putString("Hello, Avery Kernel!");
+    out.println("Graphics initialized.");
 
-    //out.switchToGraphics(&fbTerminal);
-    //out.println("The Avery Kernel");
-    //out.println("Created by Max Van den Eynde");
-    //out.println("Pre-Alpha Version: paph-0.02");
+    out.switchToGraphics(fbTerminal);
+    out.println("The Avery Kernel");
+    out.println("Created by Max Van den Eynde");
+    out.println("Pre-Alpha Version: paph-0.02");
+    out.print("Cursor position: ");
+    const cursorPos = out.getCursorPosition();
+    out.printn(cursorPos.first());
+    out.print(", ");
+    out.printn(cursorPos.second());
+    out.println("");
 
     while (true) {
         fbTerminal.updateCursor();
-        sys.delay(50);
+        sys.delay(16);
     }
 }

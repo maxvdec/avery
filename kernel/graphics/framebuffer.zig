@@ -165,9 +165,6 @@ pub const Framebuffer = struct {
     pub fn drawChar(self: *const Framebuffer, pos: Position, fnt: *const font.Font, char_code: u32, fg_color: Color, bg_color: ?Color) void {
         @setRuntimeSafety(false);
 
-        out.preserveMode();
-        out.switchToSerial();
-
         const glyph_data = fnt.getGlyph(char_code) orelse return;
         const font_width = fnt.header.width;
         const font_height = fnt.header.height;

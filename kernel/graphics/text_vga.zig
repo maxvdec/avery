@@ -2,8 +2,8 @@ const str = @import("string");
 const sys = @import("system");
 const mem = @import("memory");
 
-var cursor_x: u16 = 0;
-var cursor_y: u16 = 0;
+pub var cursor_x: u16 = 0;
+pub var cursor_y: u16 = 0;
 var attribute: u32 = 0x0F;
 var memory_ptr: mem.VolatilePointer(u16) = undefined;
 

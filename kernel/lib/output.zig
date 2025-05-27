@@ -3,6 +3,7 @@ const str = @import("string");
 const output = @import("system");
 const serial = @import("serial");
 const terminal = @import("terminal");
+const mem = @import("memory");
 
 pub const VgaTextColor = vgaTxt.VgaTextColor;
 
@@ -15,13 +16,41 @@ pub const OutputMode = enum {
 pub var mode: OutputMode = OutputMode.VgaText;
 var modeSave: OutputMode = OutputMode.VgaText;
 
-pub var term: *terminal.FramebufferTerminal = undefined;
+pub var term: terminal.FramebufferTerminal = undefined;
 
 pub fn clear() void {
     if (mode == OutputMode.VgaText) {
         vgaTxt.clear();
     } else if (mode == OutputMode.Graphics) {
         term.clear();
+    }
+}
+
+pub fn printMode(to: OutputMode) void {
+    @setRuntimeSafety(false);
+    const beforeMode = mode;
+    preserveMode();
+    switch (to) {
+        OutputMode.Serial => switchToSerial(),
+        OutputMode.VgaText => switchToVga(),
+        OutputMode.Graphics => switchToGraphics(term),
+    }
+    switch (beforeMode) {
+        OutputMode.Serial => print("Switched to Serial mode.\n"),
+        OutputMode.VgaText => print("Switched to VGA Text mode.\n"),
+        OutputMode.Graphics => print("Switched to Graphics mode.\n"),
+    }
+    restoreMode();
+}
+
+pub fn getCursorPosition() mem.Tuple(u32, u32) {
+    if (mode == OutputMode.VgaText) {
+        return mem.Tuple(u32, u32).init(vgaTxt.cursor_x, vgaTxt.cursor_y);
+    } else if (mode == OutputMode.Graphics) {
+        const pos = term.getCursorPosition();
+        return mem.Tuple(u32, u32).init(pos.x, pos.y);
+    } else {
+        return mem.Tuple(u32, u32).init(0, 0);
     }
 }
 
@@ -41,7 +70,7 @@ pub fn switchToVga() void {
     mode = OutputMode.VgaText;
 }
 
-pub fn switchToGraphics(fbTerminal: *terminal.FramebufferTerminal) void {
+pub fn switchToGraphics(fbTerminal: terminal.FramebufferTerminal) void {
     mode = OutputMode.Graphics;
     term = fbTerminal;
 }
@@ -52,6 +81,7 @@ pub fn initOutputs() void {
 }
 
 pub fn char(chr: str.char) void {
+    @setRuntimeSafety(false);
     if (mode == OutputMode.Serial) {
         serial.writeChar(chr);
     } else if (mode == OutputMode.VgaText) {
@@ -63,6 +93,7 @@ pub fn char(chr: str.char) void {
 }
 
 pub fn print(string: []const u8) void {
+    @setRuntimeSafety(false);
     const stdStr = str.makeRuntime(string);
     if (mode == OutputMode.Serial) {
         serial.writeString(stdStr);
@@ -75,6 +106,7 @@ pub fn print(string: []const u8) void {
 }
 
 pub fn printchar(chr: str.char) void {
+    @setRuntimeSafety(false);
     if (mode == OutputMode.Serial) {
         serial.writeChar(chr);
     } else if (mode == OutputMode.VgaText) {
@@ -86,6 +118,7 @@ pub fn printchar(chr: str.char) void {
 }
 
 pub fn println(string: []const u8) void {
+    @setRuntimeSafety(false);
     const stdStr = str.makeRuntime(string);
     if (mode == OutputMode.Serial) {
         serial.writeString(stdStr);
@@ -94,7 +127,7 @@ pub fn println(string: []const u8) void {
         vgaTxt.printStr(stdStr);
         vgaTxt.printStr(str.make("\n"));
     } else if (mode == OutputMode.Graphics) {
-        term.putString(string);
+        term.putString(stdStr.iterate());
         term.putChar('\n');
         term.refresh();
     }

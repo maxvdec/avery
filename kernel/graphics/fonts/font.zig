@@ -1,4 +1,5 @@
 const out = @import("output");
+const sys = @import("system");
 
 const PsfHeader = struct {
     magic: u32,
@@ -27,7 +28,7 @@ pub const Font = struct {
         const header: PsfHeader = header_ptr.*;
 
         if (header.magic != 0x864ab572) {
-            @panic("Invalid PSF magic number");
+            sys.panic("Invalid PSF magic number");
         }
 
         const glyph_data: [*]const u8 = @ptrFromInt(@intFromPtr(&_binary_kernel_graphics_fonts_aply16_bitfnt_start) + header.headersize);

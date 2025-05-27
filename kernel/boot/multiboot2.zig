@@ -33,7 +33,7 @@ pub const MemoryMapTag = packed struct {
 };
 
 pub const FramebufferTag = packed struct {
-    typ: TagType,
+    typ: u32,
     size: u32,
     addr: u64,
     pitch: u32,
@@ -42,12 +42,6 @@ pub const FramebufferTag = packed struct {
     bpp: u8,
     framebuffer_type: u8,
     reserved: u16,
-    red_field_position: u8,
-    red_mask_size: u8,
-    green_field_position: u8,
-    green_mask_size: u8,
-    blue_field_position: u8,
-    blue_mask_size: u8,
 };
 
 pub fn getBootInfo(addr: u32) *const BootInfo {
@@ -55,7 +49,8 @@ pub fn getBootInfo(addr: u32) *const BootInfo {
     return bootInfo;
 }
 
-pub fn getMemoryMapTag(bootInfo: *const BootInfo) mem.Tuple(*const MemoryMapTag, bool) {
+pub fn getMemoryMapTag(bootInfo: *const BootInfo) mem.Optional(*const MemoryMapTag) {
+    @setRuntimeSafety(false);
     var addr: usize = @intFromPtr(bootInfo) + @sizeOf(BootInfo);
     const end_addr: usize = @intFromPtr(bootInfo) + bootInfo.total_size;
 
@@ -63,24 +58,22 @@ pub fn getMemoryMapTag(bootInfo: *const BootInfo) mem.Tuple(*const MemoryMapTag,
         const tag = @as(*const Tag, @ptrFromInt(addr));
 
         if (tag.typ == TagType.End) {
-            const memoryMap = mem.Tuple(*const MemoryMapTag, bool).init(@ptrFromInt(addr), false);
-            return memoryMap;
+            return mem.Optional(*const MemoryMapTag).none();
         }
 
         if (tag.typ == TagType.MemoryMap) {
-            const memoryMap = mem.Tuple(*const MemoryMapTag, bool).init(@ptrFromInt(addr), true);
-            return memoryMap;
+            return mem.Optional(*const MemoryMapTag).some(@as(*const MemoryMapTag, @ptrFromInt(addr)));
         }
 
         const alignedSize = (tag.size + 7) & ~@as(usize, 7);
         addr += alignedSize;
     }
 
-    const memoryMap = mem.Tuple(*const MemoryMapTag, bool).init(@ptrFromInt(addr), false);
-    return memoryMap;
+    return mem.Optional(*const MemoryMapTag).none();
 }
 
-pub fn getFramebufferTag(bootInfo: *const BootInfo) mem.Tuple(*const FramebufferTag, bool) {
+pub fn getFramebufferTag(bootInfo: *const BootInfo) mem.Optional(*const FramebufferTag) {
+    @setRuntimeSafety(false);
     var addr: usize = @intFromPtr(bootInfo) + @sizeOf(BootInfo);
     const end_addr: usize = @intFromPtr(bootInfo) + bootInfo.total_size;
 
@@ -90,14 +83,15 @@ pub fn getFramebufferTag(bootInfo: *const BootInfo) mem.Tuple(*const Framebuffer
         if (tag.typ == TagType.End) break;
 
         if (tag.typ == TagType.Framebuffer) {
-            return mem.Tuple(*const FramebufferTag, bool).init(@ptrFromInt(addr), true);
+            const framebuffer: *const FramebufferTag = @as(*const FramebufferTag, @ptrFromInt(addr));
+            return mem.Optional(*const FramebufferTag).some(framebuffer);
         }
 
         const alignedSize = (tag.size + 7) & ~@as(usize, 7);
         addr += alignedSize;
     }
 
-    return mem.Tuple(*const FramebufferTag, bool).init(@ptrFromInt(addr), false);
+    return mem.Optional(*const FramebufferTag).none();
 }
 
 pub fn getAvailableMemory(memMap: MemoryMapTag) u64 {
