@@ -22,7 +22,7 @@ pub const FramebufferTerminal = struct {
     char_under_cursor: u8,
     needs_refresh: bool,
 
-    const CURSOR_BLINK_RATE = 800000;
+    const CURSOR_BLINK_RATE = 3200000;
 
     pub fn init(framebuffer: *const Framebuffer, terminal_font: *const font.Font) FramebufferTerminal {
         const font_width = terminal_font.header.width;
@@ -202,7 +202,7 @@ pub const FramebufferTerminal = struct {
                 self.cursor_blink_counter = 0;
             },
             '\t' => self.tab(),
-            '\x08' => self.backspace(),
+            0x08 => self.backspace(),
             0x7F => self.backspace(),
             ' '...0x7E => {
                 if (self.cursor_enabled) {
@@ -221,6 +221,7 @@ pub const FramebufferTerminal = struct {
                     self.cursor_blink_counter = 0;
                 }
             },
+            0x00 => {},
             else => {
                 if (self.cursor_enabled) {
                     self.restoreCharUnderCursor();
@@ -304,7 +305,7 @@ pub const FramebufferTerminal = struct {
         while (y < cursor_height and cursor_y_pos + y < self.framebuffer.framebufferTag.height) : (y += 1) {
             var x: u32 = 0;
             while (x < cursor_width and pixel_x + x < self.framebuffer.framebufferTag.width) : (x += 1) {
-                self.framebuffer.drawPixel(Position.from(pixel_x + x, cursor_y_pos + y), self.fg_color);
+                self.framebuffer.drawToFrontbuffer(Position.from(pixel_x + x, cursor_y_pos + y), self.fg_color);
             }
         }
     }
@@ -369,7 +370,6 @@ pub const FramebufferTerminal = struct {
         if (self.cursor_enabled and self.cursor_visible) {
             self.drawCursor();
         }
-        self.framebuffer.presentBackbuffer();
         self.needs_refresh = false;
     }
 

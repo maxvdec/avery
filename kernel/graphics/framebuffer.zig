@@ -138,6 +138,56 @@ pub const Framebuffer = struct {
         }
     }
 
+    pub fn drawToFrontbuffer(self: *const Framebuffer, pos: Position, color: Color) void {
+        @setRuntimeSafety(false);
+
+        const fb = self.framebufferTag;
+
+        if (pos.x >= fb.width or pos.y >= fb.height) {
+            return;
+        }
+
+        const bytes_per_pixel = fb.bpp / 8;
+        const pixel_offset = (pos.y * fb.pitch) + (pos.x * bytes_per_pixel);
+
+        const framebuffer_ptr: [*]u8 = @ptrFromInt(self.framebuffer_addr);
+        const pixel_ptr: [*]u8 = framebuffer_ptr + pixel_offset;
+        switch (fb.bpp) {
+            32 => {
+                if (fb.framebuffer_type == 1) {
+                    pixel_ptr[0] = color.b;
+                    pixel_ptr[1] = color.g;
+                    pixel_ptr[2] = color.r;
+                    pixel_ptr[3] = color.a;
+                } else {
+                    const pixel_value = (@as(u32, color.r) << 16) |
+                        (@as(u32, color.g) << 8) |
+                        @as(u32, color.b);
+                    const pixel_ptr_u32: *u32 = @ptrCast(@alignCast(pixel_ptr));
+                    pixel_ptr_u32.* = pixel_value;
+                }
+            },
+            24 => {
+                pixel_ptr[0] = color.r;
+                pixel_ptr[1] = color.g;
+                pixel_ptr[2] = color.b;
+            },
+            16 => {
+                const r5 = @as(u16, color.r >> 3);
+                const g6 = @as(u16, color.g >> 2);
+                const b5 = @as(u16, color.b >> 3);
+
+                const pixel_value = (r5 << 11) | (g6 << 5) | b5;
+                const pixel_ptr_u16: *u16 = @ptrCast(@alignCast(pixel_ptr));
+                pixel_ptr_u16.* = pixel_value;
+            },
+            8 => {},
+            else => {
+                return;
+            },
+        }
+    }
+
     pub fn drawTestLine(self: *const Framebuffer) void {
         const fb = self.framebufferTag;
         var x: u32 = 0;
@@ -164,6 +214,7 @@ pub const Framebuffer = struct {
 
     pub fn drawChar(self: *const Framebuffer, pos: Position, fnt: *const font.Font, char_code: u32, fg_color: Color, bg_color: ?Color) void {
         @setRuntimeSafety(false);
+        if (char_code == 0) return;
 
         const glyph_data = fnt.getGlyph(char_code) orelse return;
         const font_width = fnt.header.width;
@@ -183,11 +234,11 @@ pub const Framebuffer = struct {
                 const pixel_pos = Position.from(pos.x + x, pos.y + y);
 
                 if (bg_color) |bg| {
-                    self.drawPixel(pixel_pos, bg);
+                    self.drawToFrontbuffer(pixel_pos, bg);
                 }
 
                 if (pixel_set == 1) {
-                    self.drawPixel(pixel_pos, fg_color);
+                    self.drawToFrontbuffer(pixel_pos, fg_color);
                 }
             }
         }

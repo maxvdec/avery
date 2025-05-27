@@ -32,6 +32,11 @@ pub fn removeHandler(irq: u8) void {
     irqRoutines[irq] = null;
 }
 
+pub fn isIrqHandlerInstalled(irq: u8) bool {
+    @setRuntimeSafety(false);
+    return irqRoutines[irq] != null;
+}
+
 pub fn remap() void {
     @setRuntimeSafety(false);
     sys.outb(0x20, 0x11);

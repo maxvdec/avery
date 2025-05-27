@@ -91,6 +91,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     out.printn(cursorPos.second());
     out.println("");
 
+    fusion.main(getMemoryMap());
     while (true) {
         fbTerminal.updateCursor();
         sys.delay(16);
