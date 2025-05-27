@@ -37,36 +37,35 @@ pub fn getMemoryMap() multiboot2.MemoryMapTag {
     return memoryMap;
 }
 
+const STACK_SIZE: usize = 16384; // 16 KiB
+
 export fn kernel_main(magic: u32, addr: u32) noreturn {
     @setRuntimeSafety(false);
     out.initOutputs();
     out.switchToSerial();
+
     if (magic != MULTIBOOT2_HEADER_MAGIC) {
+        out.printHex(magic);
         sys.panic("Bootloader mismatch. Try using Multiboot2 or reconfigure your bootloader.");
     }
     gdt.init();
-    out.println("GDT initialized.");
+    out.println("Setting up the GDT...");
     idt.init();
-    out.println("IDT initialized.");
+    out.println("Setting up the IDT...");
     isr.init();
-    out.println("ISR initialized.");
+    out.println("Setting up the ISR...");
     asm volatile ("sti");
-    out.println("Interrupts enabled.");
     irq.init();
-    out.println("IRQ initialized.");
+    out.println("Setting up the IRQs...");
 
     const bootInfo = multiboot2.getBootInfo(addr);
     const memMap = multiboot2.getMemoryMapTag(bootInfo);
+    out.println("Getting the memory map...");
     if (memMap.second() == false) {
         sys.panic("No memory map found.");
     }
 
     memoryMap = memMap.first().*;
-    out.println("Memory map found.");
-
-    physmem.init(memMap.first(), getKernelEnd());
-    virtmem.init();
-    out.println("Physical and virtual memory initialized.");
 
     const fbPtr = multiboot2.getFramebufferTag(bootInfo);
     if (fbPtr.second() == false) {
@@ -74,13 +73,18 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     }
 
     const fbTag = fbPtr.first().*;
-    out.println("Framebuffer found.");
+
+    physmem.init(memMap.first(), getKernelEnd());
+    virtmem.init();
+    out.println("Initializing physical and virtual memory...");
 
     const fb = framebuffer.Framebuffer.init(fbTag);
+    out.println("Initializing the framebuffer...");
     const fnt = font.Font.init();
     var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
+    fbTerminal.putString("Hello, Avery Kernel!");
 
-    out.switchToGraphics(&fbTerminal);
+    //out.switchToGraphics(&fbTerminal);
     //out.println("The Avery Kernel");
     //out.println("Created by Max Van den Eynde");
     //out.println("Pre-Alpha Version: paph-0.02");

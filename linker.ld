@@ -27,5 +27,11 @@ SECTIONS {
         *(.bss)
     }
 
+    .stack ALIGN(16) : {
+        PROVIDE(stack_bottom = .);
+        . = . + 0x4000;
+        PROVIDE(stack_top = .);
+    }
+
     PROVIDE(kernel_end = .);
 }

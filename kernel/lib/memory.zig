@@ -1,6 +1,7 @@
 const alloc = @import("allocator");
 const str = @import("string");
 const sys = @import("system");
+const out = @import("output");
 
 pub fn Pointer(comptime T: type) type {
     return struct {
@@ -426,4 +427,21 @@ pub fn readBytes(comptime size: comptime_int, buff: [*]u8) ?[]u8 {
         return null;
     }
     return bytes;
+}
+
+pub fn getStackTop() usize {
+    @setRuntimeSafety(false);
+    var stack_top: usize = 0;
+    asm volatile ("mov %%esp, %[stack_top]"
+        : [stack_top] "=r" (stack_top),
+    );
+    return stack_top;
+}
+
+pub fn printStackTop() void {
+    @setRuntimeSafety(false);
+    const stack_top = getStackTop();
+    out.print("Stack top is: ");
+    out.printHex(stack_top);
+    out.println("");
 }

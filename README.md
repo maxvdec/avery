@@ -2,8 +2,6 @@
 
 The Avery Kernel is a versatile, fast, and modern kernel written in Zig for the modern era, it is totally open-source and it aims to be the kernel for the XXI century.
 
-**I will not be working on this project much longer. I think on returning to it one day, but for now, it's on standby**
-
 # Features
 * Fast boot
 * GRUB booting
