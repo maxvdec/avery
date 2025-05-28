@@ -113,6 +113,19 @@ pub const String = struct {
         }
         return true;
     }
+
+    pub fn startsWith(self: String, prefix: String) bool {
+        if (self.data.len < prefix.data.len) {
+            return false;
+        }
+
+        for (0..prefix.data.len) |i| {
+            if (self.data[i] != prefix.data[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
 };
 
 pub fn make(comptime str: []const u8) String {

@@ -1,6 +1,7 @@
 const mem = @import("memory");
 const sys = @import("system");
 const out = @import("output");
+const vfs = @import("vfs");
 
 const ATA_PRIMARY_DATA: u16 = 0x1F0;
 const ATA_PRIMARY_ERROR: u16 = 0x1F1;
@@ -241,26 +242,32 @@ pub fn printDeviceInfo(drive: *const AtaDrive) void {
     } else {
         out.print("No\n");
     }
+
+    const fs = vfs.detectFileSystem(drive);
+    out.print("File System: ");
+    out.println(fs);
 }
 
-pub fn readSectors(drive: *const AtaDrive, lba: u32, sectors: u8, buffer: [*]u8) void {
+pub fn readSectors(drive: *const AtaDrive, lba: u32, comptime sectors: comptime_int) [sectors * 512]u8 {
     if (sectors == 0) {
-        return;
+        return [_]u8{0} ** (sectors * 512);
     }
 
     if (!drive.is_present) {
         sys.panic("Tried to read from a drive that is not present");
-        return;
+        return [_]u8{0} ** (sectors * 512);
     }
 
     if (lba + sectors > drive.sectors) {
         sys.panic("Tried to read past the end of the drive");
-        return;
+        return [_]u8{0} ** (sectors * 512);
     }
 
-    var drive_select = (if (drive.is_master) ATA_DRIVE_MASTER else ATA_DRIVE_SLAVE) | 0x40; // Include the LBA bit
+    var buffer: [sectors * 512]u8 = [_]u8{0} ** (sectors * 512);
+
+    var drive_select = (if (drive.is_master) ATA_DRIVE_MASTER else ATA_DRIVE_SLAVE) | 0x40;
     if (drive.supports_lba48) {
-        drive_select |= 0x80; // Include the LBA48 bit
+        drive_select |= 0x80;
     }
 
     while (sys.inb(ATA_PRIMARY_STATUS) & ATA_STATUS_BSY != 0) {}
@@ -314,7 +321,7 @@ pub fn readSectors(drive: *const AtaDrive, lba: u32, sectors: u8, buffer: [*]u8)
             buffer[offset + word_idx * 2 + 1] = @truncate((word >> 8) & 0xFF);
         }
     }
-    return;
+    return buffer;
 }
 
 pub fn writeSectors(drive: *const AtaDrive, lba: u32, sectors: u8, buffer: [*]u8) void {

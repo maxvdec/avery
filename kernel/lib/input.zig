@@ -17,7 +17,7 @@ pub fn readln() []const u8 {
     sys.delay(50);
 
     while (true) {
-        //out.term.updateCursor();
+        out.term.updateCursor();
 
         const chr = keyboard.currentChar;
         if (chr == 0) {

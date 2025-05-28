@@ -49,11 +49,17 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
             // TODO: Fix this command
             printMemory(memMap);
             lastExitCode = 0;
-        } else if (command.isEqualTo(str.make("disk list"))) {
-            const disks = ata.makeController();
-            ata.printDeviceInfo(&disks.master);
-            ata.printDeviceInfo(&disks.slave);
-            lastExitCode = 0;
+        } else if (command.startsWith(str.make("disk"))) {
+            if (command.isEqualTo(str.make("disk list"))) {
+                const disks = ata.makeController();
+                ata.printDeviceInfo(&disks.master);
+                ata.printDeviceInfo(&disks.slave);
+                lastExitCode = 0;
+            } else {
+                out.print("The syntax for the disk command is invalid\n");
+                lastExitCode = 1;
+                continue;
+            }
         } else if (command.isEqualTo(str.make("alloc"))) {
             _ = alloc.request(512).?;
             out.println("Allocated 512 bytes");
