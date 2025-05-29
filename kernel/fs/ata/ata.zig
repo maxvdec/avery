@@ -2,6 +2,7 @@ const mem = @import("memory");
 const sys = @import("system");
 const out = @import("output");
 const vfs = @import("vfs");
+const pit = @import("pit");
 
 const ATA_PRIMARY_DATA: u16 = 0x1F0;
 const ATA_PRIMARY_ERROR: u16 = 0x1F1;
@@ -59,6 +60,8 @@ pub const AtaDrive = struct {
     sectors: u32,
     supports_lba: bool,
     supports_lba48: bool,
+    fs: usize = 0x01, // Default to IonicFS
+    partitions: []const vfs.Partition = undefined,
 };
 
 pub const AtaController = struct {
@@ -203,14 +206,14 @@ fn copyAndTrim(dest: []u8, src: []const u8) void {
     }
 }
 
-pub fn printDeviceInfo(drive: *const AtaDrive) void {
-    out.print("======= Drive ");
+pub fn printDeviceInfo(drive: *AtaDrive) void {
+    out.print("======= ");
     if (drive.is_master) {
-        out.print("Master");
+        out.print("Primary");
     } else {
-        out.print("Slave");
+        out.print("Secondary");
     }
-    out.print(" =======\n");
+    out.print(" Drive =======\n");
     if (!drive.is_present) {
         out.print("Drive not present\n");
     }

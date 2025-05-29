@@ -3,7 +3,8 @@
 Ionic FS is a File System we designed to be easy, while offering powerful features.
 It is a File System designed to be used as one of the available ones on the Avery Kernel.
 
-**This is a basic filesystem, it is roughly reccommended to use it as your main filesystem.**<br>
+**This is a basic filesystem, it is not roughly reccommended to use it as your main filesystem.**<br>
+**Note that the filesystem uses big endian to store the data**<br>
 
 ## Tooling
 We made some crossplatform tooling in C++ for reading, writing and formating Ionic disks.

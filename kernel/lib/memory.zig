@@ -3,6 +3,17 @@ const str = @import("string");
 const sys = @import("system");
 const out = @import("output");
 
+extern fn memcpy(dest: [*]u8, src: [*]const u8, len: usize) [*]u8;
+
+pub fn copy(comptime T: type, dest: [*]T, src: [*]const T, count: usize) void {
+    @setRuntimeSafety(false);
+    if (count == 0) return;
+    const size = @sizeOf(T);
+    const src_bytes = @as([*]const u8, @ptrCast(src));
+    const dest_bytes = @as([*]u8, @ptrCast(dest));
+    _ = memcpy(dest_bytes, src_bytes, count * size);
+}
+
 pub fn Pointer(comptime T: type) type {
     return struct {
         data: [*]T,
@@ -236,6 +247,29 @@ pub fn Array(comptime T: type) type {
             };
         }
 
+        pub fn fromData(data: []const T) Self {
+            @setRuntimeSafety(false);
+            const size = data.len;
+            if (size == 0) {
+                return Self.init();
+            }
+
+            const mem = alloc.request(size * @sizeOf(T)) orelse {
+                sys.panic("Failed to allocate memory for array");
+            };
+
+            const ptr = @as([*]T, @alignCast(@ptrCast(mem)));
+            for (0..size) |i| {
+                ptr[i] = data[i];
+            }
+
+            return Self{
+                .ptr = ptr,
+                .len = size,
+                .capacity = size,
+            };
+        }
+
         pub fn destroy(self: *Self) void {
             if (self.ptr) |ptr| {
                 alloc.free(@ptrCast(ptr));
@@ -361,7 +395,68 @@ pub fn Optional(comptime T: type) type {
     };
 }
 
+pub fn Stream(comptime T: type) type {
+    return struct {
+        data: []const T,
+        index: usize,
+
+        const Self = @This();
+
+        pub fn init(collection: []const T) Self {
+            return Self{
+                .data = collection,
+                .index = 0,
+            };
+        }
+
+        pub fn getPos(self: *Self) usize {
+            @setRuntimeSafety(false);
+            return self.index;
+        }
+
+        pub fn seek(self: *Self, index: usize) void {
+            @setRuntimeSafety(false);
+            if (index < self.data.len) {
+                self.index = index; // Increment to point to the next element
+            } else {
+                sys.panic("Index out of bounds in PersistentList");
+            }
+        }
+
+        pub fn getNext(self: *Self, n: usize) ?[]const T {
+            @setRuntimeSafety(false);
+            if (n == 0 or n + self.index > self.data.len) {
+                return null;
+            }
+
+            return self.data[self.index..n];
+        }
+
+        pub fn next(self: *Self) ?T {
+            @setRuntimeSafety(false);
+            if (self.index >= self.data.len) {
+                return null;
+            }
+            const value = self.data[self.index];
+            self.index += 1;
+            return value;
+        }
+
+        pub fn get(self: *Self, n: usize) ?[]const T {
+            @setRuntimeSafety(false);
+            if (n == 0 or n + self.index > self.data.len) {
+                return null;
+            }
+
+            const data = self.data[self.index..n];
+            self.index += n; // Adjust n to be the end index
+            return data;
+        }
+    };
+}
+
 pub fn reinterpretBytes(comptime T: type, bytes: []const u8, littleEndian: bool) Optional(T) {
+    @setRuntimeSafety(false);
     const size = @sizeOf(T);
     if (bytes.len != size) {
         return Optional(T).none();
@@ -418,6 +513,21 @@ pub fn startsWith(comptime T: type, a: []const T, b: []const T) bool {
         }
     }
     return true;
+}
+
+pub fn concatBytes(comptime T: type, a: []const T, b: []const T) []T {
+    @setRuntimeSafety(false);
+    const result_len = a.len + b.len;
+    var result: [*]T = alloc.request(result_len * @sizeOf(T)) orelse {
+        sys.panic("Failed to allocate memory for concatenation");
+    };
+    for (0..a.len) |i| {
+        result[i] = a[i];
+    }
+    for (0..b.len) |i| {
+        result[a.len + i] = b[i];
+    }
+    return result[0..result_len];
 }
 
 pub fn readBytes(comptime size: comptime_int, buff: [*]u8) ?[]u8 {

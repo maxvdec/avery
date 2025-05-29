@@ -21,6 +21,7 @@ pub const Color = struct {
     }
 
     pub fn fromVga(color: out.VgaTextColor) [3]u8 {
+        @setRuntimeSafety(false);
         switch (color) {
             .Black => return [3]u8{ 0, 0, 0 },
             .Blue => return [3]u8{ 0, 0, 255 },
@@ -39,6 +40,10 @@ pub const Color = struct {
             .Yellow => return [3]u8{ 255, 255, 0 },
             .White => return [3]u8{ 255, 255, 255 },
         }
+    }
+
+    pub fn equals(self: Color, other: Color) bool {
+        return self.r == other.r and self.g == other.g and self.b == other.b and self.a == other.a;
     }
 };
 
@@ -197,6 +202,72 @@ pub const Framebuffer = struct {
         self.presentBackbuffer();
     }
 
+    pub fn getColorAtPosition(self: *const Framebuffer, pos: Position) Color {
+        @setRuntimeSafety(false);
+
+        const fb = self.framebufferTag;
+
+        if (pos.x >= fb.width or pos.y >= fb.height) {
+            return Color.from(0, 0, 0);
+        }
+
+        const bytes_per_pixel = fb.bpp / 8;
+        const pixel_offset = (pos.y * fb.pitch) + (pos.x * bytes_per_pixel);
+
+        const pixel_ptr: [*]u8 = self.backbuffer + pixel_offset;
+
+        switch (fb.bpp) {
+            32 => {
+                if (fb.framebuffer_type == 1) {
+                    return Color{
+                        .r = pixel_ptr[2],
+                        .g = pixel_ptr[1],
+                        .b = pixel_ptr[0],
+                        .a = pixel_ptr[3],
+                    };
+                } else {
+                    const pixel_ptr_u32: *u32 = @ptrCast(@alignCast(pixel_ptr));
+                    const pixel_value = pixel_ptr_u32.*;
+                    return Color{
+                        .r = @intCast((pixel_value >> 16) & 0xFF),
+                        .g = @intCast((pixel_value >> 8) & 0xFF),
+                        .b = @intCast(pixel_value & 0xFF),
+                        .a = 255,
+                    };
+                }
+            },
+            24 => {
+                return Color{
+                    .r = pixel_ptr[0],
+                    .g = pixel_ptr[1],
+                    .b = pixel_ptr[2],
+                    .a = 255,
+                };
+            },
+            16 => {
+                const pixel_ptr_u16: *u16 = @ptrCast(@alignCast(pixel_ptr));
+                const pixel_value = pixel_ptr_u16.*;
+
+                const r5 = (pixel_value >> 11) & 0x1F;
+                const g6 = (pixel_value >> 5) & 0x3F;
+                const b5 = pixel_value & 0x1F;
+
+                return Color{
+                    .r = @intCast(r5 << 3),
+                    .g = @intCast(g6 << 2),
+                    .b = @intCast(b5 << 3),
+                    .a = 255,
+                };
+            },
+            8 => {
+                return Color.from(0, 0, 0);
+            },
+            else => {
+                return Color.from(0, 0, 0);
+            },
+        }
+    }
+
     pub fn fillScreen(self: *const Framebuffer, color: Color) void {
         @setRuntimeSafety(false);
 
@@ -206,6 +277,7 @@ pub const Framebuffer = struct {
         for (0..total_pixels) |i| {
             const x = i % fb.width;
             const y = i / fb.width;
+            if (self.getColorAtPosition(Position.from(x, y)).equals(color)) continue;
             self.drawPixel(Position.from(x, y), color);
         }
 
@@ -235,10 +307,12 @@ pub const Framebuffer = struct {
 
                 if (bg_color) |bg| {
                     self.drawToFrontbuffer(pixel_pos, bg);
+                    self.drawPixel(pixel_pos, bg);
                 }
 
                 if (pixel_set == 1) {
                     self.drawToFrontbuffer(pixel_pos, fg_color);
+                    self.drawPixel(pixel_pos, fg_color);
                 }
             }
         }

@@ -19,6 +19,7 @@ const ata = @import("ata");
 const framebuffer = @import("framebuffer");
 const font = @import("font");
 const terminal = @import("terminal");
+const pit = @import("pit");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -53,6 +54,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     isr.init();
     asm volatile ("sti");
     irq.init();
+    pit.init();
     out.println("All core services initialized.");
 
     const bootInfo = multiboot2.getBootInfo(addr);
@@ -83,13 +85,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     out.switchToGraphics(fbTerminal);
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
-    out.println("Pre-Alpha Version: paph-0.02");
-    out.print("Cursor position: ");
-    const cursorPos = out.getCursorPosition();
-    out.printn(cursorPos.first());
-    out.print(", ");
-    out.printn(cursorPos.second());
-    out.println("");
+    out.println("Pre-Alpha Version: paph-0.02\n");
 
     fusion.main(getMemoryMap());
     while (true) {

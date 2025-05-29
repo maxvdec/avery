@@ -11,14 +11,6 @@ pub fn request(size: usize) ?[*]u8 {
         return null;
     };
 
-    out.print("Allocated virtual memory at: ");
-    out.printHex(virt_addr);
-    out.print("\n");
-    out.print("Which in turn maps to physical memory at: ");
-    const phys_addr = vmm.translate(virt_addr).?;
-    out.printHex(phys_addr);
-    out.print("\n");
-
     const pages_needed = (size + pmm.PAGE_SIZE - 1) / pmm.PAGE_SIZE;
 
     const guard_page_addr = virt_addr + (pages_needed * pmm.PAGE_SIZE);
@@ -41,6 +33,16 @@ pub fn store(comptime T: type) *T {
     const size = @sizeOf(T);
     const ptr = request(size) orelse {
         sys.panic("Failed to allocate memory for object");
+    };
+
+    return @alignCast(@ptrCast(ptr));
+}
+
+pub fn storeMany(comptime T: type, count: usize) [*]T {
+    @setRuntimeSafety(false);
+    const size = @sizeOf(T) * count;
+    const ptr = request(size) orelse {
+        sys.panic("Failed to allocate memory for array");
     };
 
     return @alignCast(@ptrCast(ptr));

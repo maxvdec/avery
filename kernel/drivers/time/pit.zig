@@ -2,7 +2,7 @@ const sys = @import("system");
 const out = @import("output");
 const irq = @import("irq");
 
-var timerTicks: u32 = 0;
+pub var timerTicks: u32 = 0;
 pub var seconds: u32 = 0;
 pub var milliseconds: u32 = 0;
 pub var initialized: bool = false;

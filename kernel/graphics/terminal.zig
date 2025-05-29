@@ -6,6 +6,8 @@ const out = @import("output");
 const Position = @import("framebuffer").Position;
 const str = @import("string");
 
+extern fn memcpy(dest: [*]u8, src: [*]const u8, len: usize) [*]u8;
+
 pub const FramebufferTerminal = struct {
     font: *const font.Font,
     framebuffer: *const Framebuffer,
@@ -49,9 +51,14 @@ pub const FramebufferTerminal = struct {
     }
 
     pub fn clear(self: *FramebufferTerminal) void {
-        self.framebuffer.fillScreen(self.bg_color);
+        const y = self.cursor_y;
         self.cursor_x = 0;
         self.cursor_y = 0;
+        for (0..y + 1) |row| {
+            for (0..self.max_cols) |col| {
+                self.drawCharAtPosition(' ', col, row);
+            }
+        }
         self.char_under_cursor = ' ';
         self.cursor_visible = true;
         self.cursor_blink_counter = 0;
@@ -110,28 +117,31 @@ pub const FramebufferTerminal = struct {
 
     fn scroll(self: *FramebufferTerminal) void {
         @setRuntimeSafety(false);
+        out.preserveMode();
+        out.switchToSerial();
+        out.println("Scrolling terminal...");
+        out.restoreMode();
         const font_height = self.font.header.height;
         const fb = self.framebuffer.framebufferTag;
-        const scroll_height = font_height;
 
-        const src_y = scroll_height;
-        const dst_y = 0;
-        const copy_height = fb.height - scroll_height;
+        var row: u32 = 1;
+        while (row < self.max_rows) : (row += 1) {
+            const src_y = row * font_height;
+            const dst_y = (row - 1) * font_height;
 
-        var y: u32 = 0;
-        while (y < copy_height) : (y += 1) {
-            const src_offset = ((src_y + y) * fb.pitch);
-            const dst_offset = ((dst_y + y) * fb.pitch);
-            const src_ptr = self.framebuffer.backbuffer + src_offset;
-            const dst_ptr = self.framebuffer.backbuffer + dst_offset;
+            var y: u32 = 0;
+            while (y < font_height) : (y += 1) {
+                const src_offset = ((src_y + y) * fb.pitch);
+                const dst_offset = ((dst_y + y) * fb.pitch);
+                const src_ptr = self.framebuffer.backbuffer + src_offset;
+                const dst_ptr = self.framebuffer.backbuffer + dst_offset;
 
-            var x: u32 = 0;
-            while (x < fb.pitch) : (x += 1) {
-                dst_ptr[x] = src_ptr[x];
+                _ = memcpy(dst_ptr, src_ptr, fb.pitch);
             }
         }
 
         self.clearLine(self.max_rows - 1);
+        self.framebuffer.presentBackbuffer();
     }
 
     fn clearLine(self: *FramebufferTerminal, line: u32) void {
@@ -145,6 +155,8 @@ pub const FramebufferTerminal = struct {
                 self.framebuffer.drawPixel(Position.from(x, start_y + y), self.bg_color);
             }
         }
+
+        self.framebuffer.presentBackbuffer();
     }
 
     fn tab(self: *FramebufferTerminal) void {
@@ -306,6 +318,7 @@ pub const FramebufferTerminal = struct {
             var x: u32 = 0;
             while (x < cursor_width and pixel_x + x < self.framebuffer.framebufferTag.width) : (x += 1) {
                 self.framebuffer.drawToFrontbuffer(Position.from(pixel_x + x, cursor_y_pos + y), self.fg_color);
+                self.framebuffer.drawPixel(Position.from(pixel_x + x, cursor_y_pos + y), self.fg_color);
             }
         }
     }
@@ -320,15 +333,6 @@ pub const FramebufferTerminal = struct {
         if (!self.cursor_enabled) return;
 
         self.cursor_blink_counter += 1;
-
-        // out.preserveMode();
-        // out.switchToSerial();
-        // out.print("Cursor Position: ");
-        // out.printn(self.cursor_x);
-        // out.print(", ");
-        // out.printn(self.cursor_y);
-        // out.println("");
-        // out.restoreMode();
 
         self.cursor_x = out.getCursorPosition().first();
         self.cursor_y = out.getCursorPosition().second();

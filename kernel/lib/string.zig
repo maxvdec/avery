@@ -3,6 +3,12 @@ const alloc = @import("allocator");
 const sys = @import("system");
 pub const char = u8;
 
+extern fn memcpy(
+    dest: [*]u8,
+    src: [*]const u8,
+    len: usize,
+) [*]u8;
+
 pub const String = struct {
     data: []const u8,
 
@@ -57,6 +63,21 @@ pub const String = struct {
 
     pub fn at(self: String, index: usize) u8 {
         return self.data[index];
+    }
+
+    pub fn trim(self: String) String {
+        var start: usize = 0;
+        var end: usize = self.length();
+
+        while (start < end and (self.at(start) == ' ' or self.at(start) == '\n' or self.at(start) == '\r')) {
+            start += 1;
+        }
+
+        while (end > start and (self.at(end - 1) == ' ' or self.at(end - 1) == '\n' or self.at(end - 1) == '\r')) {
+            end -= 1;
+        }
+
+        return String.fromRuntime(self.data[start..end]);
     }
 
     pub fn findChar(self: String, match: char, matches: u16) []u32 {
@@ -125,6 +146,76 @@ pub const String = struct {
             }
         }
         return true;
+    }
+
+    pub fn copyToBuffer(self: String, buffer: [*]u8) void {
+        const len = self.data.len;
+
+        _ = memcpy(buffer, self.data.ptr, len);
+    }
+};
+
+pub const DynamicString = struct {
+    data: mem.Array(u8),
+
+    pub fn init(comptime str: []const u8) DynamicString {
+        return DynamicString{
+            .data = mem.Array(u8).fromData(str),
+        };
+    }
+
+    pub fn fromRuntime(str: []const u8) DynamicString {
+        return DynamicString{
+            .data = mem.Array(u8).fromRuntime(str),
+        };
+    }
+
+    pub fn length(self: DynamicString) usize {
+        return self.data.len;
+    }
+
+    pub fn getRawPointer(self: DynamicString) [*]const u8 {
+        return self.data.ptr;
+    }
+
+    pub fn pushInt(self: *DynamicString, value: u32) void {
+        if (value == 0) {
+            self.pushChar('0');
+            return;
+        }
+
+        var temp: [10]u8 = undefined;
+        var i: usize = 0;
+        var val = value;
+
+        while (val > 0) {
+            temp[i] = @intCast((val % 10) + '0');
+            val /= 10;
+            i += 1;
+        }
+
+        while (i > 0) {
+            i -= 1;
+            self.pushChar(temp[i]);
+        }
+    }
+
+    pub fn pushStr(self: *DynamicString, str: []const u8) void {
+        for (str) |c| {
+            self.data.append(c);
+        }
+    }
+
+    pub fn pushChar(self: *DynamicString, c: char) void {
+        self.data.append(c);
+    }
+
+    pub fn snapshot(self: DynamicString) []const u8 {
+        return self.data.iterate();
+    }
+
+    pub fn coerce(self: DynamicString) String {
+        return String.fromRuntime(self.data.iterate());
     }
 };
 

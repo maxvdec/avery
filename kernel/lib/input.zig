@@ -12,44 +12,31 @@ pub fn readln() []const u8 {
     keyboard.currentChar = 0;
     keyboard.shift = false;
 
-    var backspaceCombo: u32 = 0;
-
-    sys.delay(50);
-
     while (true) {
         out.term.updateCursor();
 
         const chr = keyboard.currentChar;
         if (chr == 0) {
             continue;
-        } else {
-            if (chr == 0x08) {
-                backspaceCombo += 1;
-                if (i > 0) {
-                    buffer[i] = 0;
-                    i -= 1;
-                }
-            }
+        }
 
-            if (backspaceCombo > i - 1) {
-                backspaceCombo = 0;
-                continue;
+        keyboard.currentChar = 0;
+
+        if (chr == 0x08) {
+            if (i > 0) {
+                i -= 1;
+                buffer[i] = 0;
+                out.printchar(chr);
             }
+        } else if (chr == '\n' or chr == '\r') {
             out.printchar(chr);
-
-            if (chr == 0x08) {
-                continue;
-            }
-
-            if (chr == '\n' or chr == '\r') {
-                keyboard.currentChar = 0;
-                break;
-            }
+            break;
+        } else {
             if (i < buffer.len - 1) {
                 buffer[i] = chr;
                 i += 1;
+                out.printchar(chr);
             }
-            keyboard.currentChar = 0;
         }
     }
     return buffer[0..i];
