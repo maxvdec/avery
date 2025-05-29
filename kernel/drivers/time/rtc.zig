@@ -12,7 +12,7 @@ const RTC_CENTURY = 0x32;
 const CMOS_ADDR = 0x70;
 const CMOS_DATA = 0x71;
 
-const UNIX_EPOCH_YEAR = 1970;
+const UNIX_EPOCH_YEAR: u16 = 1970;
 
 pub const DateTime = struct { year: u16, month: u8, day: u8, hour: u8, minute: u8, second: u8 };
 
@@ -30,10 +30,12 @@ fn bcdToBinary(bcd: u8) u8 {
 
 fn isRTCInBCD() bool {
     const statusB = readCMOS(0x0B);
-    return (statusB & 0x04) != 0; // Check the BCD mode bit
+    return (statusB & 0x04) == 0;
 }
 
 pub fn readRTC() DateTime {
+    while ((readCMOS(0x0A) & 0x80) != 0) {}
+
     const is_bcd = isRTCInBCD();
 
     var second = readCMOS(RTC_SECONDS);
@@ -54,7 +56,12 @@ pub fn readRTC() DateTime {
         century = bcdToBinary(century);
     }
 
-    const full_year = @as(u16, century) * 100 + @as(u16, year);
+    var full_year: u16 = undefined;
+    if (century == 0) {
+        full_year = 2000 + @as(u16, year);
+    } else {
+        full_year = @as(u16, century) * 100 + @as(u16, year);
+    }
 
     return DateTime{
         .year = full_year,
@@ -77,7 +84,7 @@ const DAYS_IN_MONTH = [_]u8{ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 pub fn dateTimeToUnix(dt: DateTime) u64 {
     var unix_time: u64 = 0;
 
-    var year = UNIX_EPOCH_YEAR;
+    var year: u16 = UNIX_EPOCH_YEAR;
     while (year < dt.year) : (year += 1) {
         if (isLeapYear(year)) {
             unix_time += 366 * 24 * 60 * 60;
@@ -114,7 +121,7 @@ pub fn unixToDateTime(unix_time: u64) DateTime {
     var year: u16 = UNIX_EPOCH_YEAR;
 
     while (true) {
-        const seconds_in_year = if (isLeapYear(year)) 366 * 24 * 60 * 60 else 365 * 24 * 60 * 60;
+        const seconds_in_year: u64 = if (isLeapYear(year)) 366 * 24 * 60 * 60 else 365 * 24 * 60 * 60;
         if (remaining_seconds < seconds_in_year) break;
         remaining_seconds -= seconds_in_year;
         year += 1;
@@ -132,13 +139,30 @@ pub fn unixToDateTime(unix_time: u64) DateTime {
         month += 1;
     }
 
-    const day = @as(u8, @intCast(remaining_seconds / (24 * 60 * 60))) + 1;
-    remaining_seconds %= (24 * 60 * 60);
+    const seconds_per_day: u64 = 24 * 60 * 60; // 86400
+    var day: u8 = 1;
+    while (remaining_seconds >= seconds_per_day) {
+        remaining_seconds -= seconds_per_day;
+        day += 1;
+    }
 
-    const hour = @as(u8, @intCast(remaining_seconds / (60 * 60)));
-    remaining_seconds %= (60 * 60);
-    const minute = @as(u8, @intCast(remaining_seconds / 60));
-    const second = @as(u8, @intCast(remaining_seconds % 60));
+    const remaining_u32 = @as(u32, @intCast(remaining_seconds));
+    const seconds_per_hour: u32 = 60 * 60; // 3600
+    var hour: u8 = 0;
+    var remaining_in_day = remaining_u32;
+    while (remaining_in_day >= seconds_per_hour) {
+        remaining_in_day -= seconds_per_hour;
+        hour += 1;
+    }
+
+    const seconds_per_minute: u32 = 60;
+    var minute: u8 = 0;
+    while (remaining_in_day >= seconds_per_minute) {
+        remaining_in_day -= seconds_per_minute;
+        minute += 1;
+    }
+
+    const second = @as(u8, @intCast(remaining_in_day));
 
     return DateTime{
         .year = year,
