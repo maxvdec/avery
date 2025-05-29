@@ -41,6 +41,7 @@ pub fn getAtaController() *ata.AtaController {
 
 pub fn main(memMap: multiboot2.MemoryMapTag) void {
     var lastExitCode: u8 = 0;
+    const cwd: []const u8 = "/";
     while (true) {
         if (lastExitCode != 0) {
             out.setTextColor(out.VgaTextColor.Red, out.VgaTextColor.Black);
@@ -68,6 +69,11 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
             out.printU64(time_unix);
             out.println(")");
             lastExitCode = 0;
+        } else if (command.isEqualTo(str.make("ls"))) {
+            if (mem.compareBytes(u8, cwd, "/")) {
+                const dir = vfs.getRootDirectory(&getAtaController().master, 0);
+                vfs.printDirectory(dir);
+            }
         } else if (command.startsWith(str.make("disk"))) {
             if (command.isEqualTo(str.make("disk list"))) {
                 ata.printDeviceInfo(&getAtaController().master);

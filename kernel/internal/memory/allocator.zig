@@ -19,7 +19,6 @@ pub fn request(size: usize) ?[*]u8 {
     const metadata = @as(*usize, @ptrCast(@alignCast(@as(*anyopaque, @ptrFromInt(virt_addr)))));
     metadata.* = size;
 
-    // Clean the memory
     for (0..size) |i| {
         const byte_ptr: *u8 = @ptrFromInt(virt_addr + i);
         byte_ptr.* = 0;

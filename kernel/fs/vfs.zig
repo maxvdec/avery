@@ -5,6 +5,7 @@ const out = @import("output");
 const alloc = @import("allocator");
 const ionicfs = @import("ionicfs");
 const str = @import("string");
+const rtc = @import("rtc");
 
 pub const Partition = struct {
     name: []const u8,
@@ -13,12 +14,28 @@ pub const Partition = struct {
     exists: bool,
 };
 
+pub const DirectoryEntry = struct {
+    name: []const u8,
+    lastAccessed: u64,
+    lastModified: u64,
+    created: u64,
+    region: u32,
+    isDirectory: bool,
+};
+
+pub const Directory = struct {
+    region: u32,
+    name: []const u8 = "",
+    entries: []DirectoryEntry,
+};
+
 pub const SupportedFileSystems = enum(usize) {
     Undefined = 0,
     IonicFS = 1,
 };
 
 pub fn detectFileSystem(drive: *ata.AtaDrive) []const u8 {
+    @setRuntimeSafety(false);
     if (!drive.is_present) {
         return "Undefined";
     }
@@ -40,7 +57,74 @@ pub fn detectFileSystem(drive: *ata.AtaDrive) []const u8 {
     return "";
 }
 
+pub fn getRootDirectory(drive: *ata.AtaDrive, partitionNumber: u8) Directory {
+    @setRuntimeSafety(false);
+    _ = detectPartitions(drive);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return Directory{ .region = 0, .name = "", .entries = &[_]DirectoryEntry{} };
+    }
+
+    if (partitionNumber >= drive.partitions.len) {
+        out.println("Invalid partition number.");
+        out.printn(partitionNumber);
+        out.print(" (Max: ");
+        out.printn(drive.partitions.len - 1);
+        out.println(")");
+        out.println("Returning empty directory.");
+        return Directory{ .region = 0, .name = "", .entries = &[_]DirectoryEntry{} };
+    }
+
+    const partition = drive.partitions[partitionNumber];
+    if (!partition.exists) {
+        out.println("Partition does not exist.");
+        return Directory{ .region = 0, .name = "", .entries = &[_]DirectoryEntry{} };
+    }
+
+    switch (drive.fs) {
+        0x01 => {
+            return ionicfs.parseRootDirectory(drive, partition);
+        },
+        else => {
+            out.println("Unsupported file system detected.");
+            return Directory{ .region = 0, .name = "", .entries = &[_]DirectoryEntry{} };
+        },
+    }
+}
+
+pub fn printDirectory(dir: Directory) void {
+    @setRuntimeSafety(false);
+    out.print("Directory ");
+    out.print(dir.name);
+    out.print(" (Region: ");
+    out.printn(dir.region);
+    out.println("):");
+    if (dir.entries.len == 0) {
+        out.println("  No entries found.");
+        return;
+    }
+    for (dir.entries) |entry| {
+        out.print(entry.name);
+        if (entry.isDirectory) {
+            out.print("/");
+        }
+        out.print(" (Region: ");
+        out.printHex(entry.region);
+        out.print(", Last Accessed: ");
+        const lastAccessedStr = rtc.formatDateTime(rtc.unixToDateTime(entry.lastAccessed));
+        out.print(lastAccessedStr);
+        out.print(", Last Modified: ");
+        const lastModifiedStr = rtc.formatDateTime(rtc.unixToDateTime(entry.lastModified));
+        out.print(lastModifiedStr);
+        out.print(", Created: ");
+        const createdStr = rtc.formatDateTime(rtc.unixToDateTime(entry.created));
+        out.print(createdStr);
+        out.println(")");
+    }
+}
+
 pub fn printPartitions(drive: *ata.AtaDrive) void {
+    @setRuntimeSafety(false);
     if (!drive.is_present) {
         out.println("No drive detected.");
         return;

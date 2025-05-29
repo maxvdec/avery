@@ -343,6 +343,11 @@ pub fn Array(comptime T: type) type {
             return null;
         }
 
+        pub fn coerce(self: Self) []T {
+            @setRuntimeSafety(false);
+            return self.iterate();
+        }
+
         pub fn iterate(self: Self) []T {
             @setRuntimeSafety(false);
             if (self.ptr == null) return &[_]T{};
