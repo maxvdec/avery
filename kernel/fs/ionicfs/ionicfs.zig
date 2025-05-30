@@ -169,3 +169,145 @@ pub fn parseDirectory(drive: *ata.AtaDrive, region: u32, dirName: []const u8) vf
         .name = dirName,
     };
 }
+
+pub fn traverseDirectory(drive: *ata.AtaDrive, dirName: []const u8, partition: u32) u32 {
+    @setRuntimeSafety(false);
+    const partition_data = detectPartitions(drive);
+    if (!partition_data[partition].exists) {
+        out.println("Partition does not exist.");
+        return 0;
+    }
+
+    var entries = parseRootDirectory(drive, partition_data[partition]);
+    var pathItems = mem.Array(str.String).init();
+    var path = dirName;
+    const delim: u8 = '/';
+    var pos: ?usize = 0;
+    while (true) {
+        pos = mem.find(u8, path, delim);
+        if (pos == null) {
+            break;
+        }
+        const item = path[0..pos.?];
+        pathItems.append(str.String.fromRuntime(item));
+        path = path[pos.? + 1 ..];
+    }
+    pathItems.append(str.makeRuntime(path));
+    var found: usize = 0;
+    while (found < pathItems.len) : (found += 1) {
+        const currentPath = pathItems.get(found).?;
+        if (currentPath.isEqualTo(str.make("."))) {
+            continue;
+        }
+        var foundEntry = false;
+        for (entries.entries) |entry| {
+            if (mem.compareBytes(u8, entry.name, currentPath.coerce()) and entry.isDirectory) {
+                foundEntry = true;
+                entries = parseDirectory(drive, entry.region, currentPath.coerce());
+                break;
+            }
+        }
+        if (!foundEntry) {
+            out.print("Directory not found: ");
+            out.println(currentPath.coerce());
+            return 0;
+        }
+    }
+
+    if (found == pathItems.len) {
+        for (entries.entries) |entry| {
+            if (mem.compareBytes(u8, entry.name, pathItems.get(found - 1).?.iterate())) {
+                return entry.region;
+            }
+        }
+    }
+    out.print("Directory not found: ");
+    out.println(pathItems.get(found - 1).?.iterate());
+    return 0;
+}
+
+pub fn findFileInDirectory(drive: *ata.AtaDrive, fileName: []const u8, region: u32) u32 {
+    @setRuntimeSafety(false);
+
+    var entries = parseDirectory(drive, region, ".");
+    var found: usize = 0;
+    while (found < entries.entries.len) : (found += 1) {
+        const currentPath = entries.entries[found].name;
+        if (mem.compareBytes(u8, currentPath, ".")) {
+            continue;
+        }
+        var foundEntry = false;
+        for (entries.entries) |entry| {
+            if (mem.compareBytes(u8, entry.name, currentPath) and entry.isDirectory) {
+                foundEntry = true;
+                entries = parseDirectory(drive, entry.region, currentPath);
+                break;
+            } else if (mem.compareBytes(u8, entry.name, fileName) and !entry.isDirectory) {
+                foundEntry = true;
+                return entry.region;
+            }
+        }
+        if (!foundEntry) {
+            out.print("Directory not found: ");
+            out.println(currentPath);
+            return 0;
+        }
+    }
+    return 0;
+}
+
+pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]const u8 {
+    @setRuntimeSafety(false);
+    const partition_data = detectPartitions(drive);
+    if (!partition_data[partition].exists) {
+        out.println("Partition does not exist.");
+        return null;
+    }
+
+    var filePath: []const u8 = fileName;
+    var dirPath: []const u8 = "";
+    var bareFileName: []const u8 = "";
+
+    const lastSlashIndex = mem.findLast(u8, filePath, '/');
+    if (lastSlashIndex != null) {
+        dirPath = filePath[0..lastSlashIndex.?];
+        bareFileName = filePath[lastSlashIndex.? + 1 ..];
+    } else {
+        bareFileName = filePath;
+    }
+
+    const dirRegion = traverseDirectory(drive, dirPath, partition);
+    var region = findFileInDirectory(drive, bareFileName, dirRegion);
+    if (region == 0) {
+        out.print("File not found: ");
+        out.println(bareFileName);
+        return null;
+    }
+    const sector_data = ata.readSectors(drive, region, 1);
+    var sector = mem.Stream(u8).init(&sector_data);
+    var buffer = mem.Buffer(u8, 256).init();
+    while (true) {
+        const byte = sector.get(1).?[0];
+        if (byte == FILE_REGION) {
+            const fileData = sector.get(507).?;
+            buffer.push(fileData);
+            var nextRegion: u32 = 0;
+            const regionData = sector.get(4).?;
+            for (0..4) |j| {
+                nextRegion |= @as(u32, regionData[j]) << @as(u5, @intCast(j * 8));
+            }
+            if (nextRegion == 0) {
+                break;
+            }
+            region = nextRegion;
+            const nextSectorData = ata.readSectors(drive, region, 1);
+            sector = mem.Stream(u8).init(&nextSectorData);
+        }
+    }
+
+    if (buffer.len == 0) {
+        out.println("File is empty.");
+        return null;
+    }
+    return buffer.coerce();
+}

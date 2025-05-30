@@ -74,6 +74,16 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 const dir = vfs.getRootDirectory(&getAtaController().master, 0);
                 vfs.printDirectory(dir);
             }
+        } else if (command.startsWith(str.make("read"))) {
+            const parts = command.splitChar(' ');
+            const route: str.String = parts.get(1).?;
+            out.print("Reading file: ");
+            out.printstr(route);
+            out.println("");
+            const file = vfs.readFile(&getAtaController().master, 0, route.coerce()).?;
+            out.print(file);
+            out.println("");
+            lastExitCode = 0;
         } else if (command.startsWith(str.make("disk"))) {
             if (command.isEqualTo(str.make("disk list"))) {
                 ata.printDeviceInfo(&getAtaController().master);

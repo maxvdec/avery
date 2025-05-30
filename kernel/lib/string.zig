@@ -49,6 +49,10 @@ pub const String = struct {
         return String.fromRuntime(&buff);
     }
 
+    pub fn coerce(self: String) []const u8 {
+        return self.data;
+    }
+
     pub fn getRawPointer(self: String) [*]const u8 {
         return self.data.ptr;
     }
@@ -120,6 +124,40 @@ pub const String = struct {
         }
 
         return true;
+    }
+
+    pub fn splitChar(self: String, delimiter: char) mem.Array(String) {
+        @setRuntimeSafety(false);
+        var result = mem.Array(String).init();
+
+        if (self.length() == 0) {
+            return result;
+        }
+
+        var start: usize = 0;
+        var i: usize = 0;
+
+        while (i < self.length()) {
+            if (self.at(i) == delimiter) {
+                if (start < i) {
+                    const part = String.fromRuntime(self.data[start..i]);
+                    result.append(part);
+                } else {
+                    result.append(String.init(""));
+                }
+                start = i + 1;
+            }
+            i += 1;
+        }
+
+        if (start < self.length()) {
+            const remaining = String.fromRuntime(self.data[start..self.length()]);
+            result.append(remaining);
+        } else if (start == self.length()) {
+            result.append(String.init(""));
+        }
+
+        return result;
     }
 
     pub fn isEqualTo(self: String, other: String) bool {

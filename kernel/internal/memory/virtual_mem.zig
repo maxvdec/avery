@@ -71,6 +71,11 @@ pub fn allocVirtual(size: usize, flags: u32) ?usize {
     const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     const virt_addr = next_free_virt;
 
+    if (virt_addr + (pages_needed * PAGE_SIZE) >= KERNEL_MEM_BASE) {
+        out.print("Virtual memory exhausted!\n");
+        return null;
+    }
+
     var i: usize = 0;
     while (i < pages_needed) : (i += 1) {
         const phys = pmm.allocPage() orelse {

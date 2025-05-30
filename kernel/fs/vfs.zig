@@ -94,13 +94,8 @@ pub fn getRootDirectory(drive: *ata.AtaDrive, partitionNumber: u8) Directory {
 
 pub fn printDirectory(dir: Directory) void {
     @setRuntimeSafety(false);
-    out.print("Directory ");
-    out.print(dir.name);
-    out.print(" (Region: ");
-    out.printn(dir.region);
-    out.println("):");
     if (dir.entries.len == 0) {
-        out.println("  No entries found.");
+        out.println("No entries found.");
         return;
     }
     for (dir.entries) |entry| {
@@ -108,18 +103,26 @@ pub fn printDirectory(dir: Directory) void {
         if (entry.isDirectory) {
             out.print("/");
         }
-        out.print(" (Region: ");
-        out.printHex(entry.region);
-        out.print(", Last Accessed: ");
-        const lastAccessedStr = rtc.formatDateTime(rtc.unixToDateTime(entry.lastAccessed));
-        out.print(lastAccessedStr);
-        out.print(", Last Modified: ");
-        const lastModifiedStr = rtc.formatDateTime(rtc.unixToDateTime(entry.lastModified));
-        out.print(lastModifiedStr);
-        out.print(", Created: ");
-        const createdStr = rtc.formatDateTime(rtc.unixToDateTime(entry.created));
-        out.print(createdStr);
-        out.println(")");
+        out.println("");
+    }
+}
+
+pub fn readFile(drive: *ata.AtaDrive, partitionNumber: u8, fileName: []const u8) ?[]const u8 {
+    @setRuntimeSafety(false);
+    const partition = drive.partitions[partitionNumber];
+    if (!partition.exists) {
+        out.println("Partition does not exist.");
+        return null;
+    }
+
+    switch (drive.fs) {
+        0x01 => {
+            return ionicfs.readFile(drive, fileName, @as(u32, @intCast(partitionNumber)));
+        },
+        else => {
+            out.println("Unsupported file system detected.");
+            return null;
+        },
     }
 }
 

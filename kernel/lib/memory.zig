@@ -356,6 +356,141 @@ pub fn Array(comptime T: type) type {
     };
 }
 
+pub fn Buffer(comptime T: type, comptime growSize: comptime_int) type {
+    return struct {
+        ptr: ?[*]T,
+        len: usize,
+        capacity: usize,
+
+        const Self = @This();
+
+        pub fn init() Self {
+            return Self{
+                .ptr = null,
+                .len = 0,
+                .capacity = 0,
+            };
+        }
+
+        pub fn fromData(data: []const T) Self {
+            @setRuntimeSafety(false);
+            const size = data.len;
+            if (size == 0) {
+                return Self.init();
+            }
+
+            const mem = alloc.request(size * @sizeOf(T)) orelse {
+                sys.panic("Failed to allocate memory for buffer");
+            };
+
+            const ptr = @as([*]T, @alignCast(@ptrCast(mem)));
+            for (0..size) |i| {
+                ptr[i] = data[i];
+            }
+
+            return Self{
+                .ptr = ptr,
+                .len = size,
+                .capacity = size,
+            };
+        }
+
+        pub fn destroy(self: *Self) void {
+            if (self.ptr) |ptr| {
+                alloc.free(@ptrCast(ptr));
+            }
+            self.ptr = null;
+            self.len = 0;
+            self.capacity = 0;
+        }
+
+        pub fn pop(self: *Self) ?T {
+            @setRuntimeSafety(false);
+            if (self.len == 0) return null;
+            self.len -= 1;
+            const value = self.ptr.?[self.len];
+            self.ptr.?[self.len] = undefined;
+            return value;
+        }
+
+        pub fn append(self: *Self, value: T) void {
+            @setRuntimeSafety(false);
+            if (self.len >= self.capacity) {
+                const err = self.grow();
+                if (!err.isOk()) {
+                    sys.panic(err.message);
+                }
+            }
+            self.ptr.?[self.len] = value;
+            self.len += 1;
+        }
+
+        fn grow(self: *Self) Error(void) {
+            @setRuntimeSafety(false);
+            const new_capacity = self.capacity + growSize;
+            const new_size = new_capacity * @sizeOf(T);
+            const new_mem = alloc.request(new_size) orelse {
+                return Error(void).throw("Failed to allocate memory");
+            };
+
+            const new_ptr = @as([*]T, @alignCast(@ptrCast(new_mem)));
+
+            if (self.ptr) |old_ptr| {
+                for (0..self.len) |i| {
+                    new_ptr[i] = old_ptr[i];
+                }
+                alloc.free(@ptrCast(old_ptr));
+            }
+
+            self.ptr = new_ptr;
+            self.capacity = new_capacity;
+            return Error(void).ok({});
+        }
+
+        pub fn get(self: Self, index: usize) ?T {
+            @setRuntimeSafety(false);
+            if (index >= self.len) return null;
+            return self.ptr.?[index];
+        }
+
+        pub fn set(self: *Self, index: usize, value: T) ?void {
+            @setRuntimeSafety(false);
+            if (index >= self.len) return null;
+            self.ptr.?[index] = value;
+            return null;
+        }
+
+        pub fn coerce(self: Self) []T {
+            @setRuntimeSafety(false);
+            return self.iterate();
+        }
+
+        pub fn iterate(self: Self) []T {
+            @setRuntimeSafety(false);
+            if (self.ptr == null) return &[_]T{};
+            return self.ptr.?[0..self.len];
+        }
+
+        pub fn push(self: *Self, array: []const T) void {
+            @setRuntimeSafety(false);
+            const size = array.len;
+            if (size == 0) return;
+
+            if (self.len + size > self.capacity) {
+                const err = self.grow();
+                if (!err.isOk()) {
+                    sys.panic(err.message);
+                }
+            }
+
+            for (0..size) |i| {
+                self.ptr.?[self.len + i] = array[i];
+            }
+            self.len += size;
+        }
+    };
+}
+
 pub fn Optional(comptime T: type) type {
     return struct {
         val: T = undefined,
@@ -559,4 +694,24 @@ pub fn printStackTop() void {
     out.print("Stack top is: ");
     out.printHex(stack_top);
     out.println("");
+}
+
+pub fn find(comptime T: type, data: []const T, value: T) ?usize {
+    @setRuntimeSafety(false);
+    for (0..data.len) |i| {
+        if (data[i] == value) {
+            return i;
+        }
+    }
+    return null;
+}
+
+pub fn findLast(comptime T: type, data: []const T, value: T) ?usize {
+    @setRuntimeSafety(false);
+    for (data.len - 1..0) |i| {
+        if (data[i] == value) {
+            return i;
+        }
+    }
+    return null;
 }

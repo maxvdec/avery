@@ -6,25 +6,42 @@ const mem = @import("memory");
 
 pub fn request(size: usize) ?[*]u8 {
     @setRuntimeSafety(false);
-    const virt_addr = vmm.allocVirtual(size + pmm.PAGE_SIZE, vmm.PAGE_PRESENT | vmm.PAGE_RW) orelse {
+    const total_size = @sizeOf(usize) + size;
+    const pages_needed = (total_size + pmm.PAGE_SIZE - 1) / pmm.PAGE_SIZE;
+
+    // Allocate enough space + 1 page for the guard
+    const virt_addr = vmm.allocVirtual(
+        pages_needed * pmm.PAGE_SIZE + pmm.PAGE_SIZE,
+        vmm.PAGE_PRESENT | vmm.PAGE_RW,
+    ) orelse {
         out.print("Failed to allocate virtual memory\n");
         return null;
     };
 
-    const pages_needed = (size + pmm.PAGE_SIZE - 1) / pmm.PAGE_SIZE;
-
     const guard_page_addr = virt_addr + (pages_needed * pmm.PAGE_SIZE);
     vmm.unmapPage(guard_page_addr);
 
+    out.preserveMode();
+    out.switchToSerial();
+    out.print("Allocated virtual memory at address: ");
+    out.printHex(virt_addr);
+    out.print(" with size: ");
+    out.printHex(size);
+    out.println("");
+    out.restoreMode();
+
+    // Store metadata at the beginning
     const metadata = @as(*usize, @ptrCast(@alignCast(@as(*anyopaque, @ptrFromInt(virt_addr)))));
     metadata.* = size;
 
+    const user_data_start = virt_addr + @sizeOf(usize);
+
     for (0..size) |i| {
-        const byte_ptr: *u8 = @ptrFromInt(virt_addr + i);
+        const byte_ptr: *u8 = @ptrFromInt(user_data_start + i);
         byte_ptr.* = 0;
     }
 
-    return @as([*]u8, @ptrFromInt(virt_addr + @sizeOf(usize)));
+    return @as([*]u8, @ptrFromInt(user_data_start));
 }
 
 pub fn store(comptime T: type) *T {
