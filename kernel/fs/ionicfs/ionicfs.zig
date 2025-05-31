@@ -325,4 +325,102 @@ pub fn findFreeRegion(drive: *ata.AtaDrive, partition: u32, ignore: []u32) u32 {
     return 0;
 }
 
-pub fn findFreeDirectoryEntry(drive: *ata.AtaDrive, region: u32, sizeAtLeast: u32) u64 {}
+pub fn findFreeDirectoryEntry(drive: *ata.AtaDrive, region: u32, sizeAtLeast: u32) u64 {
+    @setRuntimeSafety(false);
+    var currentRegion: u32 = region;
+    const bufferData = ata.readSectors(drive, currentRegion, 1);
+    var buffer = mem.Stream(u8).init(&bufferData);
+    var offset: usize = 1;
+    _ = buffer.get(1); // Skip the first byte which is the region type
+    while (true) {
+        const entryType = buffer.get(1).?[0];
+        offset += 1;
+        if (entryType == EMPTY_REGION or entryType == DELETED_REGION) {
+            if (offset + sizeAtLeast > 508) {
+                var continueRegion: u32 = 0;
+                for (0..4) |j| {
+                    continueRegion |= @as(u32, buffer.get(4 + j).?[0]) << @as(u5, @intCast(j * 8));
+                }
+                if (continueRegion == 0) {
+                    var sectorData = ata.readSectors(drive, currentRegion, 1);
+                    const nextRegion = findFreeRegion(drive, 0, &[_]u32{});
+                    if (nextRegion == 0) {
+                        out.println("No free region found.");
+                        return 0;
+                    }
+                    sectorData[508] = @as(u8, nextRegion & 0xFF);
+                    sectorData[509] = @as(u8, (nextRegion >> 8) & 0xFF);
+                    sectorData[510] = @as(u8, (nextRegion >> 16) & 0xFF);
+                    sectorData[511] = @as(u8, (nextRegion >> 24) & 0xFF);
+                    ata.writeSectors(drive, currentRegion, &sectorData);
+                    var newSector = [_]u8{0} ** 512;
+                    newSector[0] = DIRECTORY_REGION;
+                    ata.writeSectors(drive, nextRegion, &newSector);
+                    return @intCast(nextRegion * 512 + 1);
+                } else {
+                    const newBufferData = ata.readSectors(drive, continueRegion, 1);
+                    buffer = mem.Stream(u8).init(&newBufferData);
+                    currentRegion = continueRegion;
+                    offset = 1;
+                    continue;
+                }
+            } else {
+                return @intCast(currentRegion * 512 + (offset - 1));
+            }
+        }
+        offset += 24;
+        while (offset < 508 and buffer.get(1).?[0] != 0) {
+            offset += 1; // Skip the name
+        }
+        offset += 1; // Skip the null terminator
+        offset += 4; // Skip the region number
+    }
+    return 0;
+}
+
+pub fn createDirectory(drive: *ata.AtaDrive, dirName: []const u8, partition: u32) void {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return;
+    }
+    const partition_data = detectPartitions(drive);
+    if (partition >= partition_data.len) {
+        out.println("Partition number out of bounds.");
+        return;
+    }
+    if (!partition_data[partition].exists) {
+        out.println("Partition does not exist.");
+        return;
+    }
+
+    var withoutLastComponent: []const u8 = "";
+    var directoryName: []const u8 = "";
+
+    const lastSlashIndex = mem.findLast(u8, dirName, '/');
+    if (lastSlashIndex == null) {
+        withoutLastComponent = "";
+        directoryName = dirName;
+    } else {
+        withoutLastComponent = dirName[0..lastSlashIndex.?];
+        directoryName = dirName[lastSlashIndex.? + 1 ..];
+    }
+
+    const parentRegion = traverseDirectory(drive, withoutLastComponent, partition);
+    var writeStream = ata.WriteStream.init(drive);
+
+    if (parentRegion == 0) {
+        out.print("Parent directory not found: ");
+        out.println(withoutLastComponent);
+        return;
+    } else {
+        const size = 1 + 24 + directoryName.len + 1 + 4; // Type + timestamps + name + null terminator + region number
+        const freeEntry = findFreeDirectoryEntry(drive, parentRegion, size);
+        if (freeEntry == 0) {
+            out.println("No free directory entry found.");
+            return;
+        }
+        writeStream.seek(freeEntry);
+        writeStream.write(1, &[_]u8{DIRECTORY_REGION});
+    }
+}

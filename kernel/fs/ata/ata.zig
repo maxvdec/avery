@@ -379,3 +379,65 @@ pub fn writeSectors(drive: *const AtaDrive, lba: u32, sectors: u8, buffer: [*]u8
     sys.outb(ATA_PRIMARY_COMMAND, 0xE7);
     while (sys.inb(ATA_PRIMARY_STATUS) & ATA_STATUS_BSY != 0) {}
 }
+
+pub const WriteStream = struct {
+    drive: *const AtaDrive,
+    index: u64,
+
+    pub fn init(drive: *const AtaDrive) WriteStream {
+        @setRuntimeSafety(false);
+        if (!drive.is_present) {
+            sys.panic("WriteStream initialized with a drive that is not present");
+        }
+        return WriteStream{
+            .drive = drive,
+            .index = 0,
+        };
+    }
+
+    pub fn seek(self: *WriteStream, byte: u64) void {
+        @setRuntimeSafety(false);
+        if (byte >= self.drive.sectors * 512) {
+            sys.panic("Seek out of bounds");
+        }
+        self.index = byte;
+    }
+
+    pub fn read(self: *const WriteStream, comptime n: comptime_int) [n]u8 {
+        @setRuntimeSafety(false);
+        if (self.index + n > self.drive.sectors * 512) {
+            sys.panic("Read out of bounds");
+        }
+        const needed_sectors = (self.index + n + 511) / 512;
+        const buffer = readSectors(self.drive, @truncate(self.index / 512), needed_sectors);
+        var result: [n]u8 = undefined;
+        for (0..n) |i| {
+            if (i < buffer.len) {
+                result[i] = buffer[i];
+            } else {
+                result[i] = 0;
+            }
+        }
+
+        self.index += n;
+        return result;
+    }
+
+    pub fn write(self: *WriteStream, comptime n: comptime_int, data: []const u8) void {
+        @setRuntimeSafety(false);
+        if (self.index + n > self.drive.sectors * 512) {
+            sys.panic("Write out of bounds");
+        }
+        const needed_sectors = (self.index + n + 511) / 512;
+        var buffer: [needed_sectors * 512]u8 = [_]u8{0} ** (needed_sectors * 512);
+        for (0..n) |i| {
+            if (i < buffer.len) {
+                buffer[i] = data[i];
+            } else {
+                buffer[i] = 0;
+            }
+        }
+        writeSectors(self.drive, @truncate(self.index / 512), needed_sectors, &buffer);
+        self.index += n;
+    }
+};
