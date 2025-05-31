@@ -99,6 +99,9 @@ pub fn printDirectory(dir: Directory) void {
         return;
     }
     for (dir.entries) |entry| {
+        if (mem.compareRange(u8, entry.name, ".", 0, 1)) {
+            continue;
+        }
         out.print(entry.name);
         if (entry.isDirectory) {
             out.print("/");
@@ -185,6 +188,30 @@ pub fn detectPartitions(drive: *ata.AtaDrive) []const Partition {
         else => {
             out.println("Unsupported file system detected.");
             return &[_]Partition{};
+        },
+    }
+}
+
+pub fn getDirectory(drive: *ata.AtaDrive, dirName: []const u8, partition: u32) Directory {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return Directory{ .region = 0, .name = "", .entries = &[_]DirectoryEntry{} };
+    }
+
+    switch (drive.fs) {
+        0x01 => {
+            const string = str.makeRuntime(dirName);
+            const region = ionicfs.traverseDirectory(drive, string, partition);
+            if (region == 0) {
+                out.println("Directory not found.");
+                return Directory{ .region = 0, .name = "", .entries = &[_]DirectoryEntry{} };
+            }
+            return ionicfs.parseDirectory(drive, region, dirName);
+        },
+        else => {
+            out.println("Unsupported file system detected.");
+            return Directory{ .region = 0, .name = "", .entries = &[_]DirectoryEntry{} };
         },
     }
 }

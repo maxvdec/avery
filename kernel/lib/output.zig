@@ -142,6 +142,14 @@ pub fn setCursorPos(x: u32, y: u32) void {
     }
 }
 
+pub fn printBytes(bytes: []const u8) void {
+    @setRuntimeSafety(false);
+    for (bytes) |byte| {
+        printHex(byte);
+        print(" ");
+    }
+}
+
 pub fn printU64(num: u64) void {
     @setRuntimeSafety(false);
     var buffer: [20]u8 = undefined;

@@ -76,6 +76,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     out.println("Physical memory initialized.");
     virtmem.init();
     out.println("Virtual memory initialized.");
+    _ = alloc.initHeap();
 
     const fb = framebuffer.Framebuffer.init(fbTag);
     const fnt = font.Font.init();

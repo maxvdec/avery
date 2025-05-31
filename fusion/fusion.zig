@@ -9,8 +9,10 @@ const alloc = @import("allocator");
 const ata = @import("ata");
 const vfs = @import("vfs");
 const rtc = @import("rtc");
+const path = @import("path");
 
 fn printMemory(memMap: multiboot2.MemoryMapTag) void {
+    @setRuntimeSafety(false);
     out.println("====== Memory Info ======");
     out.println("Memory Map:");
 
@@ -40,15 +42,18 @@ pub fn getAtaController() *ata.AtaController {
 }
 
 pub fn main(memMap: multiboot2.MemoryMapTag) void {
+    @setRuntimeSafety(false);
     var lastExitCode: u8 = 0;
-    const cwd: []const u8 = "/";
+    var cwd: []const u8 = "/";
+    _ = getAtaController(); // Initialize ATA controller
     while (true) {
+        out.print(cwd);
         if (lastExitCode != 0) {
             out.setTextColor(out.VgaTextColor.Red, out.VgaTextColor.Black);
-            out.print("> ");
+            out.print(" > ");
             out.setTextColor(out.VgaTextColor.LightGray, out.VgaTextColor.Black);
         } else {
-            out.print("> ");
+            out.print(" > ");
         }
         const command_buf = in.readln();
         const command = str.makeRuntime(command_buf);
@@ -73,18 +78,40 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
             if (mem.compareBytes(u8, cwd, "/")) {
                 const dir = vfs.getRootDirectory(&getAtaController().master, 0);
                 vfs.printDirectory(dir);
+            } else {
+                const dir = vfs.getDirectory(&getAtaController().master, cwd, 0);
+                vfs.printDirectory(dir);
             }
+            lastExitCode = 0;
         } else if (command.startsWith(str.make("heap"))) {
             alloc.debugHeap();
+            lastExitCode = 0;
+        } else if (command.startsWith(str.make("cd"))) {
+            const parts = command.splitChar(' ');
+            if (parts.len < 2) {
+                out.println("Usage: cd <directory>");
+                lastExitCode = 1;
+                continue;
+            }
+            const newDir = parts.get(1).?.data;
+            if (mem.startsWith(u8, newDir, "/")) {
+                cwd = newDir;
+            } else if (mem.compareBytes(u8, newDir, "..")) {
+                cwd = path.getParentPath(cwd);
+            } else if (mem.compareBytes(u8, newDir, ".")) {} else {
+                cwd = path.joinPaths(cwd, newDir);
+            }
             lastExitCode = 0;
         } else if (command.startsWith(str.make("read"))) {
             const parts = command.splitChar(' ');
             const route: str.String = parts.get(1).?;
-            out.print("Reading file: ");
-            out.printstr(route);
-            out.println("");
-            const file = vfs.readFile(&getAtaController().master, 0, route.coerce()).?;
-            out.print(file);
+            const routeData = route.data;
+            const file = vfs.readFile(&getAtaController().master, 0, routeData);
+            if (file == null) {
+                lastExitCode = 1;
+                continue;
+            }
+            out.print(file.?);
             out.println("");
             lastExitCode = 0;
         } else if (command.startsWith(str.make("disk"))) {

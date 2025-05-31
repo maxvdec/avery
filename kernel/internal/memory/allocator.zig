@@ -14,10 +14,13 @@ const BlockHeader = struct {
 var heap_start: ?*BlockHeader = null;
 var heap_end: usize = 0;
 var heap_size: usize = 0;
+var free_blocks: usize = 0;
+var used_blocks: usize = 0;
+var total_blocks: usize = 0;
 const INITIAL_HEAP_SIZE = 16 * pmm.PAGE_SIZE;
 const MIN_BLOCK_SIZE = 16;
 
-fn initHeap() bool {
+pub fn initHeap() bool {
     @setRuntimeSafety(false);
     if (heap_start != null) return true;
 
@@ -36,6 +39,10 @@ fn initHeap() bool {
         .next = null,
         .prev = null,
     };
+
+    total_blocks = 1;
+    free_blocks = 1;
+    used_blocks = 0;
 
     return true;
 }
@@ -71,7 +78,13 @@ fn expandHeap(min_size: usize) bool {
 
         if (current.?.is_free) {
             mergeBlocks(current.?, new_block);
+        } else {
+            total_blocks += 1;
+            free_blocks += 1;
         }
+    } else {
+        total_blocks += 1;
+        free_blocks += 1;
     }
 
     heap_size += expand_size;
@@ -113,6 +126,9 @@ fn splitBlock(block: *BlockHeader, size: usize) void {
 
         block.next = new_block;
         block.size = size;
+
+        total_blocks += 1;
+        free_blocks += 1;
     }
 }
 
@@ -124,10 +140,18 @@ fn mergeBlocks(first: *BlockHeader, second: *BlockHeader) void {
     if (second.next != null) {
         second.next.?.prev = first;
     }
+
+    total_blocks -= 1;
+    if (second.is_free) {
+        free_blocks -= 1;
+    } else {
+        used_blocks -= 1;
+    }
 }
 
 fn coalesceBlocks(block: *BlockHeader) void {
     @setRuntimeSafety(false);
+
     while (block.next != null and block.next.?.is_free) {
         mergeBlocks(block, block.next.?);
     }
@@ -164,6 +188,10 @@ pub fn request(size: usize) ?[*]u8 {
 
     splitBlock(block.?, aligned_size);
 
+    if (block.?.is_free) {
+        free_blocks -= 1;
+        used_blocks += 1;
+    }
     block.?.is_free = false;
 
     const user_data_addr = @intFromPtr(block.?) + @sizeOf(BlockHeader);
@@ -182,6 +210,7 @@ pub fn store(comptime T: type) *T {
     const ptr = request(size) orelse {
         sys.panic("Failed to allocate memory for object");
     };
+
     return @alignCast(@ptrCast(ptr));
 }
 
@@ -207,43 +236,28 @@ pub fn free(ptr: [*]u8) void {
     }
 
     block.is_free = true;
+    used_blocks -= 1;
+    free_blocks += 1;
 
     coalesceBlocks(block);
 }
 
 pub fn debugHeap() void {
     @setRuntimeSafety(false);
-    out.println("=== Heap Debug ===");
+    out.println("=== Heap Memory ===");
     out.print("Heap start: ");
     out.printHex(@intFromPtr(heap_start));
     out.print(", size: ");
     out.printHex(heap_size);
     out.println("");
 
-    var current = heap_start;
-    var block_count: usize = 0;
-    var free_count: usize = 0;
-    var used_count: usize = 0;
-
-    out.println("Checking blocks...");
-    while (current != null) : (current = current.?.next) {
-        block_count += 1;
-
-        if (current.?.is_free) {
-            free_count += 1;
-        } else {
-            used_count += 1;
-        }
-    }
-    out.setCursorPos(out.getCursorPosition().a, out.getCursorPosition().b - 1);
     out.print("Total blocks: ");
-    out.printn(block_count);
+    out.printn(total_blocks);
     out.println("");
     out.print("Free blocks: ");
-    out.printn(free_count);
+    out.printn(free_blocks);
     out.println("");
     out.print("Used blocks: ");
-    out.printn(used_count);
+    out.printn(used_blocks);
     out.println("");
-    out.println("=== End Debug ===");
 }

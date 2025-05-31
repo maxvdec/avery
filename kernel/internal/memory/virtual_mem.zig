@@ -68,6 +68,7 @@ pub fn freeVirtualRange(virt_start: usize, num_pages: usize) void {
 }
 
 pub fn allocVirtual(size: usize, flags: u32) ?usize {
+    @setRuntimeSafety(false);
     const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     const virt_addr = next_free_virt;
 

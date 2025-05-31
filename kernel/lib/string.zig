@@ -28,6 +28,18 @@ pub const String = struct {
         return self.data.len;
     }
 
+    pub fn copy(self: String) String {
+        @setRuntimeSafety(false);
+        const raw = alloc.request(self.data.len);
+        if (raw == null) {
+            return String.init("");
+        }
+
+        const buffer: []u8 = raw.?[0..self.data.len];
+        _ = memcpy(buffer.ptr, self.data.ptr, self.data.len);
+        return String.fromRuntime(buffer);
+    }
+
     pub fn join(self: String, other: String) ?String {
         const newLen = self.length() + other.length();
         if (newLen > 1024) {
@@ -124,6 +136,13 @@ pub const String = struct {
         }
 
         return true;
+    }
+
+    pub fn dropFirst(self: String, count: usize) String {
+        if (count >= self.length()) {
+            return String.init("");
+        }
+        return String.fromRuntime(self.data[count..self.length()]);
     }
 
     pub fn splitChar(self: String, delimiter: char) mem.Array(String) {

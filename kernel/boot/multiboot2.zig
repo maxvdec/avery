@@ -95,6 +95,7 @@ pub fn getFramebufferTag(bootInfo: *const BootInfo) mem.Optional(*const Framebuf
 }
 
 pub fn getAvailableMemory(memMap: MemoryMapTag) u64 {
+    @setRuntimeSafety(false);
     var memCopy = memMap;
     const tag = &memCopy;
     const entry_size = tag.entry_size;

@@ -199,80 +199,104 @@ uint32_t traverseDirectory(const fs::path &diskPath,
                            int partitionIndex) {
     if (!fs::exists(diskPath)) {
         std::cerr << "Error: Disk path does not exist." << std::endl;
-        return {};
+        return 0;
     }
-
     if (fs::is_directory(diskPath)) {
         std::cerr << "Error: Disk path is a directory." << std::endl;
-        return {};
+        return 0;
     }
-
     if (fs::is_empty(diskPath)) {
         std::cerr << "Error: Disk path is empty." << std::endl;
-        return {};
+        return 0;
     }
 
     std::fstream diskFile(diskPath,
                           std::ios::in | std::ios::out | std::ios::binary);
     if (!diskFile) {
         std::cerr << "Error: Unable to open disk file." << std::endl;
-        return {};
+        return 0;
     }
 
     DriveInformation info = getDriveInformation(diskPath).value();
     if (partitionIndex < 0 || partitionIndex >= 4) {
         std::cerr << "Error: Invalid partition index." << std::endl;
-        return {};
+        return 0;
     }
+
     Partition partition = info.partitions[partitionIndex];
     if (!partition.usable) {
         std::cerr << "Error: Partition is not usable." << std::endl;
-        return {};
+        return 0;
     }
 
-    std::vector<DirectoryEntry> entries =
-        parseRootDirectory(diskPath, partitionIndex).entries;
-    std::vector<std::string> pathItems = {};
+    if (directoryName.empty()) {
+        auto rootDir = parseRootDirectory(diskPath, partitionIndex);
+        return rootDir.region;
+    }
+
+    auto rootResult = parseRootDirectory(diskPath, partitionIndex);
+    std::vector<DirectoryEntry> entries = rootResult.entries;
+    uint32_t currentRegion = rootResult.region;
+
+    std::vector<std::string> pathItems;
     std::string path = directoryName;
+
+    if (path.substr(0, 2) == "./") {
+        path = path.substr(2);
+    }
+
     std::string delimiter = "/";
     size_t pos = 0;
     while ((pos = path.find(delimiter)) != std::string::npos) {
         std::string token = path.substr(0, pos);
-        pathItems.push_back(token);
+        if (!token.empty()) {
+            pathItems.push_back(token);
+        }
         path.erase(0, pos + delimiter.length());
     }
-    pathItems.push_back(path);
-    int found = 0;
-    while (found < pathItems.size()) {
-        std::string currentPath = pathItems[found];
+    if (!path.empty()) {
+        pathItems.push_back(path);
+    }
+
+    if (pathItems.empty()) {
+        return currentRegion;
+    }
+
+    for (size_t i = 0; i < pathItems.size(); i++) {
+        const std::string &currentPath = pathItems[i];
+
         if (currentPath == ".") {
-            found++;
             continue;
         }
+
         bool foundEntry = false;
         for (const auto &entry : entries) {
             if (entry.name == currentPath && entry.isDirectory) {
                 foundEntry = true;
-                entries = parseDirectory(diskPath, entry.region).entries;
+                currentRegion = entry.region;
+
+                uint32_t maxRegions = partition.partitionSize;
+                if (currentRegion >= maxRegions || currentRegion == 0) {
+                    std::cerr << "Error: Invalid region number "
+                              << currentRegion << " (max: " << maxRegions << ")"
+                              << std::endl;
+                    return 0;
+                }
+
+                auto dirResult = parseDirectory(diskPath, currentRegion);
+                entries = dirResult.entries;
                 break;
             }
         }
+
         if (!foundEntry) {
-            std::cerr << "Error: Directory not found." << std::endl;
-            return {};
+            std::cerr << "Error: Directory '" << currentPath
+                      << "' not found in current location." << std::endl;
+            return 0;
         }
-        found++;
     }
 
-    if (found == pathItems.size()) {
-        for (const auto &entry : entries) {
-            if (entry.name == pathItems[found - 1]) {
-                return entry.region;
-            }
-        }
-    }
-    std::cerr << "Error: Directory not found." << std::endl;
-    return {};
+    return currentRegion;
 }
 
 void createDirectory(const fs::path &diskPath, const std::string &dirName,
@@ -311,12 +335,20 @@ void createDirectory(const fs::path &diskPath, const std::string &dirName,
         return;
     }
 
-    std::string withoutLastComponent =
-        dirName.substr(0, dirName.find_last_of('/'));
+    std::string withoutLastComponent;
+    std::string directoryName;
+
+    size_t lastSlash = dirName.find_last_of('/');
+    if (lastSlash == std::string::npos) {
+        withoutLastComponent = "";
+        directoryName = dirName;
+    } else {
+        withoutLastComponent = dirName.substr(0, lastSlash);
+        directoryName = dirName.substr(lastSlash + 1);
+    }
+
     uint32_t parentRegion =
         traverseDirectory(diskPath, withoutLastComponent, partitionIndex);
-
-    std::string directoryName = dirName.substr(dirName.find_last_of('/') + 1);
 
     if (parentRegion == 0) {
         std::cerr << "Error: Parent directory not found." << std::endl;
@@ -339,13 +371,16 @@ void createDirectory(const fs::path &diskPath, const std::string &dirName,
                        sizeof(currentTime));
         diskFile.write(reinterpret_cast<char *>(&currentTime),
                        sizeof(currentTime));
-        diskFile.write(directoryName.c_str(), dirName.size());
-        diskFile.write("\0", 1); // Null terminator for the name
+        diskFile.write(directoryName.c_str(), directoryName.size());
+        diskFile.write("\0", 1);
         uint32_t regionNumber = findFreeRegion(diskPath, partitionIndex);
         if (regionNumber == 0) {
             std::cerr << "Error: No free region found. regionNumber was 0."
                       << std::endl;
             return;
+        } else {
+            std::cout << "Creating directory in region: " << regionNumber
+                      << std::endl;
         }
         diskFile.write(reinterpret_cast<char *>(&regionNumber),
                        sizeof(regionNumber));

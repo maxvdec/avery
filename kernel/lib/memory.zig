@@ -641,6 +641,20 @@ pub fn compareBytes(comptime T: type, a: []const T, b: []const T) bool {
     return true;
 }
 
+pub fn compareRange(comptime T: type, a: []const T, b: []const T, start: usize, end: usize) bool {
+    @setRuntimeSafety(false);
+    if (start >= a.len or end > a.len or end - start != b.len) {
+        return false;
+    }
+
+    for (0..b.len) |i| {
+        if (a[start + i] != b[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 pub fn startsWith(comptime T: type, a: []const T, b: []const T) bool {
     @setRuntimeSafety(false);
     if (a.len < b.len) {
@@ -708,10 +722,15 @@ pub fn find(comptime T: type, data: []const T, value: T) ?usize {
 
 pub fn findLast(comptime T: type, data: []const T, value: T) ?usize {
     @setRuntimeSafety(false);
-    for (data.len - 1..0) |i| {
+    if (data.len == 0) return null;
+
+    var i: usize = data.len - 1;
+    while (true) {
         if (data[i] == value) {
             return i;
         }
+        if (i == 0) break;
+        i -= 1;
     }
     return null;
 }
