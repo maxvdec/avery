@@ -20,6 +20,7 @@ const framebuffer = @import("framebuffer");
 const font = @import("font");
 const terminal = @import("terminal");
 const pit = @import("pit");
+const syscall = @import("syscall");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -55,6 +56,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     asm volatile ("sti");
     irq.init();
     pit.init();
+    syscall.initSyscall();
     out.println("All core services initialized.");
 
     const bootInfo = multiboot2.getBootInfo(addr);
@@ -87,6 +89,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.02\n");
+    _ = syscall.perform(10, 0, 0, 0, 0, 0);
 
     fusion.main(getMemoryMap());
     while (true) {

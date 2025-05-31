@@ -23,6 +23,7 @@ KERNEL_ZIG_OBJ := \
 	$(BUILD_DIR)/gdt_symbols.o \
 	$(BUILD_DIR)/irq_symbols.o \
 	$(BUILD_DIR)/memcopy.o \
+	$(BUILD_DIR)/syscall_handler.o \
 
 KERNEL_ASM_SRCS := $(shell find $(KERNEL_DIR) -name '*.asm')
 KERNEL_ASM_OBJS := $(patsubst $(KERNEL_DIR)/%.asm,$(BUILD_DIR)/%.o,$(KERNEL_ASM_SRCS))

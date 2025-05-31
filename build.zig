@@ -1,13 +1,6 @@
 const std = @import("std");
 
-const objects = [_][]const u8{
-    "kernel/init.zig",
-    "kernel/internal/idt/idt_symbols.zig",
-    "kernel/internal/isr/isr_symbols.zig",
-    "kernel/internal/irq/irq_symbols.zig",
-    "kernel/internal/gdt/gdt_symbols.zig",
-    "kernel/internal/memory/memcopy.zig",
-};
+const objects = [_][]const u8{ "kernel/init.zig", "kernel/internal/idt/idt_symbols.zig", "kernel/internal/isr/isr_symbols.zig", "kernel/internal/irq/irq_symbols.zig", "kernel/internal/gdt/gdt_symbols.zig", "kernel/internal/memory/memcopy.zig", "kernel/internal/syscalls/syscall_handler.zig" };
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{ .default_target = .{
