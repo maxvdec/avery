@@ -133,9 +133,9 @@ pub fn println(string: []const u8) void {
     }
 }
 
-pub fn setCursorPos(x: u8, y: u8) void {
+pub fn setCursorPos(x: u32, y: u32) void {
     if (mode == OutputMode.VgaText) {
-        vgaTxt.setCursorPos(x, y);
+        vgaTxt.setCursorPos(@as(u8, @intCast(x)), @as(u8, @intCast(y)));
     } else if (mode == OutputMode.Graphics) {
         term.setCursorPosition(x, y);
         term.refresh();

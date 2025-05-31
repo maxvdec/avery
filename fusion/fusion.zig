@@ -74,6 +74,9 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 const dir = vfs.getRootDirectory(&getAtaController().master, 0);
                 vfs.printDirectory(dir);
             }
+        } else if (command.startsWith(str.make("heap"))) {
+            alloc.debugHeap();
+            lastExitCode = 0;
         } else if (command.startsWith(str.make("read"))) {
             const parts = command.splitChar(' ');
             const route: str.String = parts.get(1).?;
