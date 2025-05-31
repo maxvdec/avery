@@ -302,3 +302,27 @@ pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]c
     const data = buffer.coerce();
     return data;
 }
+
+pub fn findFreeRegion(drive: *ata.AtaDrive, partition: u32, ignore: []u32) u32 {
+    @setRuntimeSafety(false);
+    var currentRegion: u32 = @as(u32, @intCast(drive.partitions[partition].start_sector));
+    while (currentRegion < drive.partitions[partition].start_sector + drive.partitions[partition].size) {
+        const sector_data = ata.readSectors(drive, currentRegion, 1);
+        if (sector_data[0] == EMPTY_REGION or sector_data[0] == DELETED_REGION) {
+            var isFree = true;
+            for (ignore) |ignoredRegion| {
+                if (ignoredRegion == currentRegion) {
+                    isFree = false;
+                    break;
+                }
+            }
+            if (isFree) {
+                return currentRegion;
+            }
+        }
+        currentRegion += 1;
+    }
+    return 0;
+}
+
+pub fn findFreeDirectoryEntry(drive: *ata.AtaDrive, region: u32, sizeAtLeast: u32) u64 {}
