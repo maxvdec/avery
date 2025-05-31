@@ -81,7 +81,7 @@ pub fn parseDirectory(drive: *ata.AtaDrive, region: u32, dirName: []const u8) vf
         var offset: usize = 1;
 
         while (offset < 508) {
-            if (offset + 25 > 508) break; // Prevent overflow
+            if (offset + 25 > 508) break;
 
             const entryType = sector_data[offset];
             if (entryType == 0x0) {
@@ -147,8 +147,14 @@ pub fn parseDirectory(drive: *ata.AtaDrive, region: u32, dirName: []const u8) vf
             }
             offset += 4;
 
+            const buf = alloc.duplicate(u8, name.snapshot());
+            if (buf == null) {
+                out.println("Memory allocation failed for directory entry name.");
+                return vfs.Directory{ .region = 0, .entries = entries.coerce(), .name = dirName };
+            }
+
             const entry = vfs.DirectoryEntry{
-                .name = name.snapshot(),
+                .name = buf.?[0..name.length()],
                 .lastAccessed = lastAccessed,
                 .lastModified = lastModified,
                 .created = created,
@@ -294,6 +300,5 @@ pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]c
         return null;
     }
     const data = buffer.coerce();
-    buffer.destroy();
     return data;
 }

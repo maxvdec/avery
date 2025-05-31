@@ -755,3 +755,23 @@ pub fn isEmpty(comptime T: type, data: []const T) bool {
     @setRuntimeSafety(false);
     return data.len == 0;
 }
+
+pub fn move(dst: [*]u8, src: [*]const u8, count: usize) void {
+    @setRuntimeSafety(false);
+
+    if (dst == src or count == 0) return;
+
+    if (@intFromPtr(dst) < @intFromPtr(src) or @intFromPtr(dst) >= @intFromPtr(src) + count) {
+        // No overlap or safe to copy forward
+        var i: usize = 0;
+        while (i < count) : (i += 1) {
+            dst[i] = src[i];
+        }
+    } else {
+        // Overlapping, copy backwards
+        var i: usize = count;
+        while (i > 0) : (i -= 1) {
+            dst[i - 1] = src[i - 1];
+        }
+    }
+}

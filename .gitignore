@@ -14,3 +14,4 @@ tools/ionicfs/CMakeCache.txt
 tools/ionicfs/ionicfs
 tools/ionicfs/Makefile
 tools/ionicfs/.cache
+.DS_Store

@@ -117,31 +117,21 @@ pub const FramebufferTerminal = struct {
 
     fn scroll(self: *FramebufferTerminal) void {
         @setRuntimeSafety(false);
-        out.preserveMode();
-        out.switchToSerial();
-        out.println("Scrolling terminal...");
-        out.restoreMode();
+
         const font_height = self.font.header.height;
         const fb = self.framebuffer.framebufferTag;
+        const row_size = fb.pitch * font_height;
 
-        var row: u32 = 1;
-        while (row < self.max_rows) : (row += 1) {
-            const src_y = row * font_height;
-            const dst_y = (row - 1) * font_height;
+        const framebuffer_ptr: [*]u8 = @ptrFromInt(self.framebuffer.framebuffer_addr);
 
-            var y: u32 = 0;
-            while (y < font_height) : (y += 1) {
-                const src_offset = ((src_y + y) * fb.pitch);
-                const dst_offset = ((dst_y + y) * fb.pitch);
-                const src_ptr = self.framebuffer.backbuffer + src_offset;
-                const dst_ptr = self.framebuffer.backbuffer + dst_offset;
+        const src_ptr = framebuffer_ptr + row_size;
+        const dst_ptr = framebuffer_ptr;
 
-                _ = memcpy(dst_ptr, src_ptr, fb.pitch);
-            }
-        }
+        const total_bytes = row_size * (self.max_rows - 1);
+
+        mem.move(dst_ptr, src_ptr, total_bytes);
 
         self.clearLine(self.max_rows - 1);
-        self.framebuffer.presentBackbuffer();
     }
 
     fn clearLine(self: *FramebufferTerminal, line: u32) void {
@@ -152,11 +142,9 @@ pub const FramebufferTerminal = struct {
         while (y < font_height) : (y += 1) {
             var x: u32 = 0;
             while (x < self.framebuffer.framebufferTag.width) : (x += 1) {
-                self.framebuffer.drawPixel(Position.from(x, start_y + y), self.bg_color);
+                self.framebuffer.drawToFrontbuffer(Position.from(x, start_y + y), self.bg_color);
             }
         }
-
-        self.framebuffer.presentBackbuffer();
     }
 
     fn tab(self: *FramebufferTerminal) void {

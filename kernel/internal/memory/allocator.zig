@@ -149,15 +149,17 @@ fn mergeBlocks(first: *BlockHeader, second: *BlockHeader) void {
     }
 }
 
-fn coalesceBlocks(block: *BlockHeader) void {
+fn coalesceBlocks(mut_block: *BlockHeader) void {
     @setRuntimeSafety(false);
 
-    while (block.next != null and block.next.?.is_free) {
-        mergeBlocks(block, block.next.?);
+    var current = mut_block;
+
+    while (current.prev != null and current.prev.?.is_free) {
+        current = current.prev.?;
     }
 
-    if (block.prev != null and block.prev.?.is_free) {
-        mergeBlocks(block.prev.?, block);
+    while (current.next != null and current.next.?.is_free) {
+        mergeBlocks(current, current.next.?);
     }
 }
 
@@ -240,6 +242,21 @@ pub fn free(ptr: [*]u8) void {
     free_blocks += 1;
 
     coalesceBlocks(block);
+}
+
+pub fn duplicate(comptime T: type, original: []const T) ?[*]T {
+    @setRuntimeSafety(false);
+    const size = @sizeOf(T) * original.len;
+    const ptr = request(size) orelse {
+        sys.panic("Failed to allocate memory for duplicate");
+    };
+
+    const dest: [*]u8 = @alignCast(@ptrCast(ptr));
+    for (0..original.len) |i| {
+        dest[i] = original[i];
+    }
+
+    return dest;
 }
 
 pub fn debugHeap() void {

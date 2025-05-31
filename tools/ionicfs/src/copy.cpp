@@ -47,7 +47,8 @@ void copyFile(const fs::path &diskPath, const std::string &fileName,
     std::string withoutLastComponent = path.substr(0, path.find_last_of("/\\"));
     std::string lastComponent = path.substr(path.find_last_of("/\\") + 1);
     std::string filePath = withoutLastComponent + "/" + fileName;
-    std::ifstream sourceFile(filePath, std::ios::binary);
+    std::cout << filePath << std::endl;
+    std::ifstream sourceFile(path, std::ios::binary);
     if (!sourceFile) {
         std::cerr << "Error: Unable to open source file." << std::endl;
         return;

@@ -62,6 +62,7 @@ pub const Framebuffer = struct {
     framebufferTag: multiboot2.FramebufferTag,
     framebuffer_addr: u32,
     backbuffer: [*]u8 = undefined,
+    framebuffer_ptr: [*]u8 = undefined,
 
     pub fn init(framebufferTag: multiboot2.FramebufferTag) Framebuffer {
         @setRuntimeSafety(false);
@@ -82,6 +83,7 @@ pub const Framebuffer = struct {
             .framebufferTag = framebufferTag,
             .framebuffer_addr = virtFramebufferAddr,
             .backbuffer = backbufferSlice,
+            .framebuffer_ptr = @ptrFromInt(virtFramebufferAddr),
         };
     }
 
