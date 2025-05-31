@@ -90,25 +90,31 @@ pub fn joinPathsAsString(base: []const u8, relative: []const u8) str.String {
     return str.makeRuntime(joined[0..i]);
 }
 
-pub fn getPathComponents(path: []const u8) []const str.String {
-    if (mem.compareBytes(u8, path, "/")) {
-        return &[_]str.String{str.makeRuntime("/")};
-    }
-
-    var components: mem.Array(str.String) = mem.Array(str.String).init();
+pub fn getPathComponents(path: []const u8) [][256]u8 {
+    const Component = [256]u8;
+    var components = mem.Array(Component).init();
     var start: usize = 0;
 
     for (0..path.len) |i| {
-        if (path[i] == '/') {
+        const c = path[i];
+        if (c == '/') {
             if (i > start) {
-                components.append(str.makeRuntime(path[start..i]));
+                const slice = path[start..i];
+                var comp: Component = undefined;
+                @memset(&comp, 0);
+                @memcpy(comp[0..slice.len], slice);
+                components.append(comp);
             }
             start = i + 1;
         }
     }
 
     if (start < path.len) {
-        components.append(str.makeRuntime(path[start..]));
+        const slice = path[start..];
+        var comp: Component = undefined;
+        @memset(&comp, 0);
+        @memcpy(comp[0..slice.len], slice);
+        components.append(comp);
     }
 
     return components.coerce();

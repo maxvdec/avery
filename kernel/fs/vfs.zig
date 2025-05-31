@@ -201,8 +201,7 @@ pub fn getDirectory(drive: *ata.AtaDrive, dirName: []const u8, partition: u32) D
 
     switch (drive.fs) {
         0x01 => {
-            const string = str.makeRuntime(dirName);
-            const region = ionicfs.traverseDirectory(drive, string, partition);
+            const region = ionicfs.getDirectoryRegion(drive, dirName, partition);
             if (region == 0) {
                 out.println("Directory not found.");
                 return Directory{ .region = 0, .name = "", .entries = &[_]DirectoryEntry{} };

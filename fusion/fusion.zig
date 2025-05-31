@@ -44,9 +44,19 @@ pub fn getAtaController() *ata.AtaController {
 pub fn main(memMap: multiboot2.MemoryMapTag) void {
     @setRuntimeSafety(false);
     var lastExitCode: u8 = 0;
-    var cwd: []const u8 = "/";
+
+    // Use a fixed buffer for cwd to avoid corruption
+    var cwd_buffer: [256]u8 = undefined;
+    cwd_buffer[0] = '/';
+    cwd_buffer[1] = 0;
+    var cwd_len: usize = 1;
+
     _ = getAtaController(); // Initialize ATA controller
+
     while (true) {
+        // Create current working directory string safely
+        const cwd = cwd_buffer[0..cwd_len];
+
         out.print(cwd);
         if (lastExitCode != 0) {
             out.setTextColor(out.VgaTextColor.Red, out.VgaTextColor.Black);
@@ -55,6 +65,7 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
         } else {
             out.print(" > ");
         }
+
         const command_buf = in.readln();
         const command = str.makeRuntime(command_buf);
 
@@ -62,8 +73,10 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
             out.clear();
             lastExitCode = 0;
         } else if (command.isEqualTo(str.make("sys.mem"))) {
-            // TODO: Fix this command
             printMemory(memMap);
+            lastExitCode = 0;
+        } else if (command.isEqualTo(str.make("sys.stack"))) {
+            mem.printStack();
             lastExitCode = 0;
         } else if (command.isEqualTo(str.make("time"))) {
             const time_unix = rtc.getUnixTime();
@@ -75,7 +88,7 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
             out.println(")");
             lastExitCode = 0;
         } else if (command.isEqualTo(str.make("ls"))) {
-            if (mem.compareBytes(u8, cwd, "/")) {
+            if (cwd_len == 1 and cwd_buffer[0] == '/') {
                 const dir = vfs.getRootDirectory(&getAtaController().master, 0);
                 vfs.printDirectory(dir);
             } else {
@@ -93,19 +106,64 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 lastExitCode = 1;
                 continue;
             }
-            const newDir = parts.get(1).?.data;
-            if (mem.startsWith(u8, newDir, "/")) {
-                cwd = newDir;
+
+            const newDirStr = parts.get(1).?;
+            const newDir = newDirStr.data;
+
+            if (newDir.len > 0 and newDir[0] == '/') {
+                cwd_buffer[0] = '/';
+                cwd_buffer[1] = 0;
+                cwd_len = 1;
             } else if (mem.compareBytes(u8, newDir, "..")) {
-                cwd = path.getParentPath(cwd);
+                // Parent directory
+                const parentPath = path.getParentPath(cwd);
+                const parentLen = parentPath.len;
+                if (parentLen < 256) {
+                    // Copy parent path safely
+                    var i: usize = 0;
+                    while (i < parentLen) : (i += 1) {
+                        cwd_buffer[i] = parentPath[i];
+                    }
+                    cwd_buffer[parentLen] = 0;
+                    cwd_len = parentLen;
+                }
             } else if (mem.compareBytes(u8, newDir, ".")) {} else {
-                cwd = path.joinPaths(cwd, newDir);
+                const joinedPath = path.joinPaths(cwd, newDir);
+                const joinedLen = joinedPath.len;
+                if (joinedLen < 256) {
+                    // Copy joined path safely
+                    var i: usize = 0;
+                    while (i < joinedLen) : (i += 1) {
+                        cwd_buffer[i] = joinedPath[i];
+                    }
+                    cwd_buffer[joinedLen] = 0;
+                    cwd_len = joinedLen;
+                } else {
+                    out.println("Path too long!");
+                    lastExitCode = 1;
+                    continue;
+                }
             }
             lastExitCode = 0;
         } else if (command.startsWith(str.make("read"))) {
             const parts = command.splitChar(' ');
-            const route: str.String = parts.get(1).?;
-            const routeData = route.data;
+            if (parts.len < 2) {
+                out.println("Usage: read <filename>");
+                lastExitCode = 1;
+                continue;
+            }
+
+            const route = parts.get(1).?;
+
+            var route_buffer: [256]u8 = undefined;
+            const route_len = @min(route.length(), 255);
+            var i: usize = 0;
+            while (i < route_len) : (i += 1) {
+                route_buffer[i] = route.data[i];
+            }
+            route_buffer[route_len] = 0;
+
+            const routeData = route_buffer[0..route_len];
             const file = vfs.readFile(&getAtaController().master, 0, routeData);
             if (file == null) {
                 lastExitCode = 1;
@@ -150,4 +208,14 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
             lastExitCode = 1;
         }
     }
+}
+
+fn safeCopyString(dest: []u8, src: []const u8) usize {
+    const copy_len = @min(dest.len - 1, src.len);
+    var i: usize = 0;
+    while (i < copy_len) : (i += 1) {
+        dest[i] = src[i];
+    }
+    dest[copy_len] = 0;
+    return copy_len;
 }

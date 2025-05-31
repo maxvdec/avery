@@ -734,3 +734,24 @@ pub fn findLast(comptime T: type, data: []const T, value: T) ?usize {
     }
     return null;
 }
+
+extern const stack_bottom: u8;
+
+pub fn printStack() void {
+    @setRuntimeSafety(false);
+    const stack_top = getStackTop();
+    out.print("Stack top is: ");
+    out.printHex(stack_top);
+    out.println("");
+    out.print("Stack bottom is: ");
+    out.printn(@intFromPtr(@as(*u32, @ptrFromInt(stack_bottom))));
+    out.println("");
+    out.print("Stack size is:");
+    out.printn(stack_top - stack_bottom);
+    out.println("");
+}
+
+pub fn isEmpty(comptime T: type, data: []const T) bool {
+    @setRuntimeSafety(false);
+    return data.len == 0;
+}

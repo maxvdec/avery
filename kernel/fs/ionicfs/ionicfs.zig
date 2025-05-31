@@ -171,8 +171,16 @@ pub fn parseDirectory(drive: *ata.AtaDrive, region: u32, dirName: []const u8) vf
     };
 }
 
-pub fn traverseDirectory(drive: *ata.AtaDrive, dirName: str.String, partition: u32) u32 {
+pub fn traverseDirectory(drive: *ata.AtaDrive, dirName: []const u8, partition: u32) u32 {
     @setRuntimeSafety(false);
+    var buffer: [256]u8 = undefined;
+    for (0..buffer.len) |i| {
+        if (i < dirName.len) {
+            buffer[i] = dirName[i];
+        } else {
+            buffer[i] = 0;
+        }
+    }
     if (!drive.is_present) {
         out.println("No drive detected.");
         return 0;
@@ -186,20 +194,36 @@ pub fn traverseDirectory(drive: *ata.AtaDrive, dirName: str.String, partition: u
         out.println("Partition does not exist.");
         return 0;
     }
-    const components = path.getPathComponents(dirName.coerce());
+    sys.delay(100);
+    const components = path.getPathComponents(buffer[0..dirName.len]);
     var current_region: u32 = @intCast(partition_data[partition].start_sector);
     for (components) |component| {
-        out.print("Traversing: ");
-        out.println(component.coerce());
-        const region = findFileInDirectory(drive, component.coerce(), current_region);
+        const componentStr: []const u8 = component[0 .. mem.find(u8, &component, 0) orelse component.len];
+        if (mem.isEmpty(u8, componentStr)) {
+            out.println("Empty directory component.");
+            continue;
+        }
+        const region = findFileInDirectory(drive, componentStr, current_region);
         if (region == 0) {
             out.print("Directory not found: ");
-            out.println(component.coerce());
+            out.println(componentStr);
             return 0;
         }
         current_region = region;
     }
     return current_region;
+}
+
+pub fn getDirectoryRegion(drive: *ata.AtaDrive, dirPath: []const u8, partition: u32) u32 {
+    var buffer: [256]u8 = undefined;
+    for (0..buffer.len) |i| {
+        if (i < dirPath.len) {
+            buffer[i] = dirPath[i];
+        } else {
+            buffer[i] = 0;
+        }
+    }
+    return traverseDirectory(drive, buffer[0..dirPath.len], partition);
 }
 
 pub fn findFileInDirectory(drive: *ata.AtaDrive, fileName: []const u8, region: u32) u32 {
@@ -236,7 +260,7 @@ pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]c
         bareFileName = fileName;
     }
 
-    const dirRegion = traverseDirectory(drive, str.makeRuntime(dirPath), partition);
+    const dirRegion = traverseDirectory(drive, dirPath, partition);
     var region = findFileInDirectory(drive, bareFileName, dirRegion);
     if (region == 0) {
         out.print("File not found: ");

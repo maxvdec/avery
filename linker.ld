@@ -29,7 +29,7 @@ SECTIONS {
 
     .stack ALIGN(16) : {
         PROVIDE(stack_bottom = .);
-        . = . + 0x4000;
+        . = . + 0x10000;
         PROVIDE(stack_top = .);
     }
 
