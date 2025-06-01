@@ -330,9 +330,6 @@ pub fn readSectors(drive: *const AtaDrive, lba: u32, comptime sectors: comptime_
 
 pub fn writeSectors(drive: *const AtaDrive, lba: u32, sectors: u8, buffer: [*]u8) void {
     @setRuntimeSafety(false);
-    out.println("WRITING TO SECTOR");
-    out.printHex(lba);
-    out.println("");
     if (sectors == 0) {
         return;
     }
@@ -347,7 +344,6 @@ pub fn writeSectors(drive: *const AtaDrive, lba: u32, sectors: u8, buffer: [*]u8
     const drive_select = if (drive.is_master) ATA_DRIVE_MASTER else ATA_DRIVE_SLAVE;
     while (sys.inb(ATA_PRIMARY_STATUS) & ATA_STATUS_BSY != 0) {}
 
-    // FIXED: Set LBA bit (0x40) along with drive select and upper 4 bits of LBA
     sys.outb(ATA_PRIMARY_DRIVE_HEAD, drive_select | 0x40 | @as(u8, @truncate((lba >> 24) & 0x0F)));
 
     sys.outb(ATA_PRIMARY_SECTOR_COUNT, sectors);

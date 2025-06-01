@@ -236,3 +236,48 @@ pub fn makeNewDirectory(
         },
     }
 }
+
+pub fn createFile(
+    drive: *ata.AtaDrive,
+    fileName: []const u8,
+    partition: u32,
+) ?void {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return null;
+    }
+
+    switch (drive.fs) {
+        0x01 => {
+            ionicfs.createFile(drive, fileName, partition);
+        },
+        else => {
+            out.println("Unsupported file system detected.");
+            return null;
+        },
+    }
+}
+
+pub fn writeToFile(
+    drive: *ata.AtaDrive,
+    fileName: []const u8,
+    data: []const u8,
+    partition: u32,
+) ?void {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return null;
+    }
+
+    switch (drive.fs) {
+        0x01 => {
+            ionicfs.writeToFile(drive, fileName, data, partition);
+        },
+        else => {
+            out.println("Unsupported file system detected.");
+            return null;
+        },
+    }
+}

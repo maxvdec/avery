@@ -96,6 +96,48 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 vfs.printDirectory(dir);
             }
             lastExitCode = 0;
+        } else if (command.startsWith(str.make("new"))) {
+            const parts = command.splitChar(' ');
+            if (parts.len < 2) {
+                out.println("Usage: new <file>");
+                lastExitCode = 1;
+                continue;
+            }
+
+            const fileName = parts.get(1).?;
+
+            if (fileName.startsWith(str.make("/"))) {
+                _ = vfs.createFile(&getAtaController().master, fileName.data, 0);
+                lastExitCode = 0;
+            } else {
+                const joinedPath = path.joinPaths(cwd, fileName.data);
+                _ = vfs.createFile(&getAtaController().master, joinedPath, 0);
+                lastExitCode = 0;
+            }
+        } else if (command.startsWith(str.make("write"))) {
+            const parts = command.splitChar(' ');
+            if (parts.len < 3) {
+                out.println("Usage: write <filename> <content>");
+                lastExitCode = 1;
+                continue;
+            }
+
+            const fileName = parts.get(1).?;
+            const contents = parts.getRest(2).?;
+            const content = contents.joinIntoString(" ");
+
+            var content_buffer: [1024]u8 = undefined;
+            const content_len = safeCopyString(content_buffer[0..], content.data);
+            const content_slice = content_buffer[0..content_len];
+
+            if (fileName.startsWith(str.make("/"))) {
+                _ = vfs.writeToFile(&getAtaController().master, fileName.data, content_slice, 0);
+                lastExitCode = 0;
+            } else {
+                const joinedPath = path.joinPaths(cwd, fileName.data);
+                _ = vfs.writeToFile(&getAtaController().master, joinedPath, content_slice, 0);
+                lastExitCode = 0;
+            }
         } else if (command.startsWith(str.make("mkdir"))) {
             const parts = command.splitChar(' ');
             if (parts.len < 2) {

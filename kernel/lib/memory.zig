@@ -348,6 +348,34 @@ pub fn Array(comptime T: type) type {
             return self.iterate();
         }
 
+        pub fn getRest(self: Self, start: usize) ?Array(T) {
+            @setRuntimeSafety(false);
+            if (start >= self.len) {
+                return null;
+            }
+            const data = self.ptr.?[start..self.len];
+            const new_array = Array(T).fromData(data);
+            return new_array;
+        }
+
+        pub fn getSlice(self: Self, start: usize, end: usize) ?[]T {
+            @setRuntimeSafety(false);
+            if (start >= self.len or end > self.len or start >= end) {
+                return null;
+            }
+            return self.ptr.?[start..end];
+        }
+
+        pub fn joinIntoString(self: Self, delimiter: []const u8) str.String {
+            @setRuntimeSafety(false);
+            var result = str.DynamicString.init("");
+            for (0..self.len) |i| {
+                result.pushStr(self.ptr.?[i].coerce());
+                result.pushStr(delimiter);
+            }
+            return result.coerce();
+        }
+
         pub fn iterate(self: Self) []T {
             @setRuntimeSafety(false);
             if (self.ptr == null) return &[_]T{};
