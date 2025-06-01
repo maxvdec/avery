@@ -217,25 +217,49 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 continue;
             }
 
-            const route = parts.get(1).?;
+            const fileName = parts.get(1).?;
 
-            var route_buffer: [256]u8 = undefined;
-            const route_len = @min(route.length(), 255);
-            var i: usize = 0;
-            while (i < route_len) : (i += 1) {
-                route_buffer[i] = route.data[i];
-            }
-            route_buffer[route_len] = 0;
+            if (fileName.startsWith(str.make("/"))) {
+                // Absolute path - use as is
+                var route_buffer: [256]u8 = undefined;
+                const route_len = @min(fileName.length(), 255);
+                var i: usize = 0;
+                while (i < route_len) : (i += 1) {
+                    route_buffer[i] = fileName.data[i];
+                }
+                route_buffer[route_len] = 0;
+                const routeData = route_buffer[0..route_len];
 
-            const routeData = route_buffer[0..route_len];
-            const file = vfs.readFile(&getAtaController().master, 0, routeData);
-            if (file == null) {
-                lastExitCode = 1;
-                continue;
+                const file = vfs.readFile(&getAtaController().master, 0, routeData);
+                if (file == null) {
+                    lastExitCode = 1;
+                    continue;
+                }
+                out.print(file.?);
+                out.println("");
+                lastExitCode = 0;
+            } else {
+                // Relative path - join with current working directory
+                const joinedPath = path.joinPaths(cwd, fileName.data);
+
+                var route_buffer: [256]u8 = undefined;
+                const route_len = @min(joinedPath.len, 255);
+                var i: usize = 0;
+                while (i < route_len) : (i += 1) {
+                    route_buffer[i] = joinedPath[i];
+                }
+                route_buffer[route_len] = 0;
+                const routeData = route_buffer[0..route_len];
+
+                const file = vfs.readFile(&getAtaController().master, 0, routeData);
+                if (file == null) {
+                    lastExitCode = 1;
+                    continue;
+                }
+                out.print(file.?);
+                out.println("");
+                lastExitCode = 0;
             }
-            out.print(file.?);
-            out.println("");
-            lastExitCode = 0;
         } else if (command.startsWith(str.make("disk"))) {
             if (command.isEqualTo(str.make("disk list"))) {
                 ata.printDeviceInfo(&getAtaController().master);
