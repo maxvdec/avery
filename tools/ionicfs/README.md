@@ -42,6 +42,7 @@ It is important that when you read a region, these bytes match:
   * `0x1` is a **deleted region**. You can overwrite it, make sure to overwrite it entirely
   * `0x2` is a **directory region**. It is a directory
   * `0x3` is a **file region**. It part of a file<br>
+  * `0x4` is a **disk reference**. It **symbolizes** a new type of disk.
 * The last **four bytes** are called the **next** and it gives information on where to go:
   * `0x0` is an **end**. It mean the directory or the file is ended. All the data is read.
   * `<sec.>` is the next sector you should jump if the next is not end. Is where the directory or file continues
@@ -59,3 +60,7 @@ Firstly, make sure that the first byte is `0x2` for a directory region. A direct
 
 ### How to read a file
 Reading a file is easy, you just parse the regions until you get to a region where it ends with `0x0`. 
+
+### How to read a disk reference
+This is OS dependent, but you should read the four bytes and based on the value switch to a disk or another.
+Routes aren't kept the same. It is just meant to get the name of the disk, nothing else!

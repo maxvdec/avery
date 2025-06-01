@@ -7,7 +7,7 @@
 
 namespace fs = std::filesystem;
 
-#define IONICFS_VERSION "001"
+#define IONICFS_VERSION "002"
 
 #define BOLD "\033[1m"
 #define GREEN "\033[32m"

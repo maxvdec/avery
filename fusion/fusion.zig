@@ -220,7 +220,6 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
             const fileName = parts.get(1).?;
 
             if (fileName.startsWith(str.make("/"))) {
-                // Absolute path - use as is
                 var route_buffer: [256]u8 = undefined;
                 const route_len = @min(fileName.length(), 255);
                 var i: usize = 0;
@@ -239,7 +238,6 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 out.println("");
                 lastExitCode = 0;
             } else {
-                // Relative path - join with current working directory
                 const joinedPath = path.joinPaths(cwd, fileName.data);
 
                 var route_buffer: [256]u8 = undefined;
