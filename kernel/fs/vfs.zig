@@ -214,3 +214,25 @@ pub fn getDirectory(drive: *ata.AtaDrive, dirName: []const u8, partition: u32) D
         },
     }
 }
+
+pub fn makeNewDirectory(
+    drive: *ata.AtaDrive,
+    dirName: []const u8,
+    partition: u32,
+) ?void {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return null;
+    }
+
+    switch (drive.fs) {
+        0x01 => {
+            ionicfs.createDirectory(drive, dirName, partition);
+        },
+        else => {
+            out.println("Unsupported file system detected.");
+            return null;
+        },
+    }
+}

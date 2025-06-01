@@ -96,6 +96,31 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 vfs.printDirectory(dir);
             }
             lastExitCode = 0;
+        } else if (command.startsWith(str.make("mkdir"))) {
+            const parts = command.splitChar(' ');
+            if (parts.len < 2) {
+                out.println("Usage: mkdir <directory>");
+                lastExitCode = 1;
+                return;
+            }
+
+            const newDirStr = parts.get(1).?;
+            if (newDirStr.startsWith(str.make("/"))) {
+                const dir = vfs.makeNewDirectory(&getAtaController().master, newDirStr.data, 0);
+                if (dir == null) {
+                    lastExitCode = 1;
+                } else {
+                    lastExitCode = 0;
+                }
+            } else {
+                const joinedPath = path.joinPaths(cwd, newDirStr.data);
+                const dir = vfs.makeNewDirectory(&getAtaController().master, joinedPath, 0);
+                if (dir == null) {
+                    lastExitCode = 1;
+                } else {
+                    lastExitCode = 0;
+                }
+            }
         } else if (command.startsWith(str.make("heap"))) {
             alloc.debugHeap();
             lastExitCode = 0;
@@ -115,11 +140,9 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 cwd_buffer[1] = 0;
                 cwd_len = 1;
             } else if (mem.compareBytes(u8, newDir, "..")) {
-                // Parent directory
                 const parentPath = path.getParentPath(cwd);
                 const parentLen = parentPath.len;
                 if (parentLen < 256) {
-                    // Copy parent path safely
                     var i: usize = 0;
                     while (i < parentLen) : (i += 1) {
                         cwd_buffer[i] = parentPath[i];
@@ -131,7 +154,6 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 const joinedPath = path.joinPaths(cwd, newDir);
                 const joinedLen = joinedPath.len;
                 if (joinedLen < 256) {
-                    // Copy joined path safely
                     var i: usize = 0;
                     while (i < joinedLen) : (i += 1) {
                         cwd_buffer[i] = joinedPath[i];

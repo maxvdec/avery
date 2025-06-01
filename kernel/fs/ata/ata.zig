@@ -3,6 +3,7 @@ const sys = @import("system");
 const out = @import("output");
 const vfs = @import("vfs");
 const pit = @import("pit");
+const alloc = @import("allocator");
 
 const ATA_PRIMARY_DATA: u16 = 0x1F0;
 const ATA_PRIMARY_ERROR: u16 = 0x1F1;
@@ -257,12 +258,12 @@ pub fn readSectors(drive: *const AtaDrive, lba: u32, comptime sectors: comptime_
     }
 
     if (!drive.is_present) {
-        sys.panic("Tried to read from a drive that is not present");
+        sys.panic("Tried to read from a drive that is not present\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
         return [_]u8{0} ** (sectors * 512);
     }
 
     if (lba + sectors > drive.sectors) {
-        sys.panic("Tried to read past the end of the drive");
+        sys.panic("Tried to read past the end of the drive\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
         return [_]u8{0} ** (sectors * 512);
     }
 
@@ -291,23 +292,23 @@ pub fn readSectors(drive: *const AtaDrive, lba: u32, comptime sectors: comptime_
                 const err = sys.inb(ATA_PRIMARY_ERROR);
 
                 if (err & 0x80 != 0) {
-                    sys.panic("ATA error: Bad block detected (BBK)");
+                    sys.panic("ATA error: Bad block detected (BBK)\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
                 } else if (err & 0x40 != 0) {
-                    sys.panic("ATA error: Uncorrectable data error (UNC)");
+                    sys.panic("ATA error: Uncorrectable data error (UNC)\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
                 } else if (err & 0x20 != 0) {
-                    sys.panic("ATA error: Media changed (MC)");
+                    sys.panic("ATA error: Media changed (MC)\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
                 } else if (err & 0x10 != 0) {
-                    sys.panic("ATA error: ID not found (IDNF)");
+                    sys.panic("ATA error: ID not found (IDNF)\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
                 } else if (err & 0x08 != 0) {
-                    sys.panic("ATA error: Media change request (MCR)");
+                    sys.panic("ATA error: Media change request (MCR)\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
                 } else if (err & 0x04 != 0) {
-                    sys.panic("ATA error: Command aborted (ABRT)");
+                    sys.panic("ATA error: Command aborted (ABRT)\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
                 } else if (err & 0x02 != 0) {
-                    sys.panic("ATA error: Track 0 not found (TK0NF)");
+                    sys.panic("ATA error: Track 0 not found (TK0NF)\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
                 } else if (err & 0x01 != 0) {
-                    sys.panic("ATA error: Address mark not found (AMNF)");
+                    sys.panic("ATA error: Address mark not found (AMNF)\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
                 } else {
-                    sys.panic("ATA error: Unknown error");
+                    sys.panic("ATA error: Unknown error\nCheck if the drive is present and the filesystem isn't corrupted before reading from it.");
                 }
             }
 
@@ -329,45 +330,43 @@ pub fn readSectors(drive: *const AtaDrive, lba: u32, comptime sectors: comptime_
 
 pub fn writeSectors(drive: *const AtaDrive, lba: u32, sectors: u8, buffer: [*]u8) void {
     @setRuntimeSafety(false);
+    out.println("WRITING TO SECTOR");
+    out.printHex(lba);
+    out.println("");
     if (sectors == 0) {
         return;
     }
-
     if (!drive.is_present) {
-        sys.panic("Tryied to write to a drive that is not present");
+        sys.panic("Tryied to write to a drive that is not present\nCheck if the drive is present and the filesystem isn't corrupted before writing to it.");
         return;
     }
-
     if (lba + sectors > drive.sectors) {
-        sys.panic("Tried to write past the end of the drive");
+        sys.panic("Tried to write past the end of the drive\nCheck if the drive is present and the filesystem isn't corrupted before writing to it.");
         return;
     }
-
     const drive_select = if (drive.is_master) ATA_DRIVE_MASTER else ATA_DRIVE_SLAVE;
-
     while (sys.inb(ATA_PRIMARY_STATUS) & ATA_STATUS_BSY != 0) {}
 
-    sys.outb(ATA_PRIMARY_DRIVE_HEAD, drive_select);
+    // FIXED: Set LBA bit (0x40) along with drive select and upper 4 bits of LBA
+    sys.outb(ATA_PRIMARY_DRIVE_HEAD, drive_select | 0x40 | @as(u8, @truncate((lba >> 24) & 0x0F)));
+
     sys.outb(ATA_PRIMARY_SECTOR_COUNT, sectors);
     sys.outb(ATA_PRIMARY_LBA_LOW, @truncate(lba & 0xFF));
     sys.outb(ATA_PRIMARY_LBA_MID, @truncate((lba >> 8) & 0xFF));
     sys.outb(ATA_PRIMARY_LBA_HIGH, @truncate((lba >> 16) & 0xFF));
-
     sys.outb(ATA_PRIMARY_COMMAND, ATA_CMD_WRITE);
-
     var sector: usize = 0;
     while (sector < sectors) : (sector += 1) {
         while (true) {
             const status = sys.inb(ATA_PRIMARY_STATUS);
             if (status & ATA_STATUS_ERR != 0) {
-                sys.panic("Error writing to drive");
+                sys.panic("Error writing to drive\nCheck if the drive is present and the filesystem isn't corrupted before writing to it.");
                 return;
             }
             if (status & ATA_STATUS_BSY == 0 and status & ATA_STATUS_DRQ != 0) {
                 break;
             }
         }
-
         const offset = sector * 512;
         var word_idx: usize = 0;
         while (word_idx < 256) : (word_idx += 1) {
@@ -375,69 +374,6 @@ pub fn writeSectors(drive: *const AtaDrive, lba: u32, sectors: u8, buffer: [*]u8
             sys.outw(ATA_PRIMARY_DATA, word);
         }
     }
-
     sys.outb(ATA_PRIMARY_COMMAND, 0xE7);
     while (sys.inb(ATA_PRIMARY_STATUS) & ATA_STATUS_BSY != 0) {}
 }
-
-pub const WriteStream = struct {
-    drive: *const AtaDrive,
-    index: u64,
-
-    pub fn init(drive: *const AtaDrive) WriteStream {
-        @setRuntimeSafety(false);
-        if (!drive.is_present) {
-            sys.panic("WriteStream initialized with a drive that is not present");
-        }
-        return WriteStream{
-            .drive = drive,
-            .index = 0,
-        };
-    }
-
-    pub fn seek(self: *WriteStream, byte: u64) void {
-        @setRuntimeSafety(false);
-        if (byte >= self.drive.sectors * 512) {
-            sys.panic("Seek out of bounds");
-        }
-        self.index = byte;
-    }
-
-    pub fn read(self: *const WriteStream, comptime n: comptime_int) [n]u8 {
-        @setRuntimeSafety(false);
-        if (self.index + n > self.drive.sectors * 512) {
-            sys.panic("Read out of bounds");
-        }
-        const needed_sectors = (self.index + n + 511) / 512;
-        const buffer = readSectors(self.drive, @truncate(self.index / 512), needed_sectors);
-        var result: [n]u8 = undefined;
-        for (0..n) |i| {
-            if (i < buffer.len) {
-                result[i] = buffer[i];
-            } else {
-                result[i] = 0;
-            }
-        }
-
-        self.index += n;
-        return result;
-    }
-
-    pub fn write(self: *WriteStream, comptime n: comptime_int, data: []const u8) void {
-        @setRuntimeSafety(false);
-        if (self.index + n > self.drive.sectors * 512) {
-            sys.panic("Write out of bounds");
-        }
-        const needed_sectors = (self.index + n + 511) / 512;
-        var buffer: [needed_sectors * 512]u8 = [_]u8{0} ** (needed_sectors * 512);
-        for (0..n) |i| {
-            if (i < buffer.len) {
-                buffer[i] = data[i];
-            } else {
-                buffer[i] = 0;
-            }
-        }
-        writeSectors(self.drive, @truncate(self.index / 512), needed_sectors, &buffer);
-        self.index += n;
-    }
-};

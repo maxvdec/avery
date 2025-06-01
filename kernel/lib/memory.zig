@@ -775,3 +775,76 @@ pub fn move(dst: [*]u8, src: [*]const u8, count: usize) void {
         }
     }
 }
+
+pub fn reinterpretToBytes(comptime T: type, value: T) []const u8 {
+    @setRuntimeSafety(false);
+    const size = @sizeOf(T);
+    var bytes: [@sizeOf(T)]u8 = undefined;
+    bytes = @bitCast(value);
+    return bytes[0..size];
+}
+
+pub fn WriteStream(comptime T: type) type {
+    return struct {
+        data: [*]T,
+        len: usize,
+        index: usize,
+
+        const Self = @This();
+
+        pub fn init(data: [*]T, n: usize) Self {
+            return Self{
+                .data = data,
+                .len = n,
+                .index = 0,
+            };
+        }
+
+        pub fn write(self: *Self, len: usize, value: []const T) ?usize {
+            @setRuntimeSafety(false);
+            if (self.index + len > self.len) {
+                return null;
+            }
+
+            for (0..len) |i| {
+                self.data[self.index + i] = value[i];
+            }
+            self.index += len;
+            return len;
+        }
+
+        pub fn seek(self: *Self, index: usize) void {
+            @setRuntimeSafety(false);
+            if (index < self.len) {
+                self.index = index; // Increment to point to the next element
+            } else {
+                sys.panic("Index out of bounds in WriteStream");
+            }
+        }
+
+        pub fn getPos(self: *Self) usize {
+            @setRuntimeSafety(false);
+            return self.index;
+        }
+
+        pub fn getNext(self: *Self, n: usize) ?[]const T {
+            @setRuntimeSafety(false);
+            if (n == 0 or n + self.index > self.len) {
+                return null;
+            }
+
+            return self.data[self.index..n];
+        }
+
+        pub fn read(self: *Self, n: usize) ?[]const T {
+            @setRuntimeSafety(false);
+            if (n == 0 or n + self.index > self.len) {
+                return null;
+            }
+
+            const data = self.data[self.index..n];
+            self.index += n; // Adjust n to be the end index
+            return data;
+        }
+    };
+}

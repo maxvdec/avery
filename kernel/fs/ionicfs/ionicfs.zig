@@ -6,6 +6,7 @@ const ata = @import("ata");
 const alloc = @import("allocator");
 const mem = @import("memory");
 const path = @import("path");
+const rtc = @import("rtc");
 extern fn memcpy(dest: [*]u8, src: [*]const u8, len: usize) [*]u8;
 
 pub const EMPTY_REGION = 0x0;
@@ -306,8 +307,22 @@ pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]c
 pub fn findFreeRegion(drive: *ata.AtaDrive, partition: u32, ignore: []u32) u32 {
     @setRuntimeSafety(false);
     var currentRegion: u32 = @as(u32, @intCast(drive.partitions[partition].start_sector));
-    while (currentRegion < drive.partitions[partition].start_sector + drive.partitions[partition].size) {
+    out.println("Starting search for free region in partition: ");
+    out.printHex(currentRegion);
+    out.print(" - ");
+    out.printHex(drive.partitions[partition].start_sector);
+    out.print(" + ");
+    out.printHex(drive.partitions[partition].size);
+    out.println("");
+    while (currentRegion >= drive.partitions[partition].start_sector and currentRegion < drive.partitions[partition].start_sector + drive.partitions[partition].size) {
+        out.print("Checking region: ");
+        out.printHex(currentRegion);
+        out.println("");
         const sector_data = ata.readSectors(drive, currentRegion, 1);
+        var stream = mem.Stream(u8).init(&sector_data);
+        out.println("Sector data: ");
+        out.printHex(stream.get(1).?[0]);
+        out.println("");
         if (sector_data[0] == EMPTY_REGION or sector_data[0] == DELETED_REGION) {
             var isFree = true;
             for (ignore) |ignoredRegion| {
@@ -317,6 +332,9 @@ pub fn findFreeRegion(drive: *ata.AtaDrive, partition: u32, ignore: []u32) u32 {
                 }
             }
             if (isFree) {
+                out.print("Found free region: ");
+                out.printHex(currentRegion);
+                out.println("");
                 return currentRegion;
             }
         }
@@ -328,53 +346,85 @@ pub fn findFreeRegion(drive: *ata.AtaDrive, partition: u32, ignore: []u32) u32 {
 pub fn findFreeDirectoryEntry(drive: *ata.AtaDrive, region: u32, sizeAtLeast: u32) u64 {
     @setRuntimeSafety(false);
     var currentRegion: u32 = region;
-    const bufferData = ata.readSectors(drive, currentRegion, 1);
-    var buffer = mem.Stream(u8).init(&bufferData);
-    var offset: usize = 1;
-    _ = buffer.get(1); // Skip the first byte which is the region type
+
     while (true) {
-        const entryType = buffer.get(1).?[0];
-        offset += 1;
-        if (entryType == EMPTY_REGION or entryType == DELETED_REGION) {
-            if (offset + sizeAtLeast > 508) {
-                var continueRegion: u32 = 0;
-                for (0..4) |j| {
-                    continueRegion |= @as(u32, buffer.get(4 + j).?[0]) << @as(u5, @intCast(j * 8));
-                }
-                if (continueRegion == 0) {
-                    var sectorData = ata.readSectors(drive, currentRegion, 1);
-                    const nextRegion = findFreeRegion(drive, 0, &[_]u32{});
-                    if (nextRegion == 0) {
-                        out.println("No free region found.");
-                        return 0;
-                    }
-                    sectorData[508] = @as(u8, nextRegion & 0xFF);
-                    sectorData[509] = @as(u8, (nextRegion >> 8) & 0xFF);
-                    sectorData[510] = @as(u8, (nextRegion >> 16) & 0xFF);
-                    sectorData[511] = @as(u8, (nextRegion >> 24) & 0xFF);
-                    ata.writeSectors(drive, currentRegion, &sectorData);
-                    var newSector = [_]u8{0} ** 512;
-                    newSector[0] = DIRECTORY_REGION;
-                    ata.writeSectors(drive, nextRegion, &newSector);
-                    return @intCast(nextRegion * 512 + 1);
+        const bufferData = ata.readSectors(drive, currentRegion, 1);
+
+        out.println("Searching for free directory entry in region: ");
+        out.printHex(currentRegion);
+        out.println("");
+
+        var offset: usize = 1;
+
+        while (offset < 508) {
+            if (offset >= bufferData.len) break;
+
+            const entryType = bufferData[offset];
+            offset += 1;
+
+            out.println("Entry type at offset ");
+            out.printHex(offset - 1);
+            out.println(": ");
+            out.printHex(entryType);
+            out.println("");
+
+            if (entryType == EMPTY_REGION or entryType == DELETED_REGION) {
+                if (offset - 1 + sizeAtLeast <= 508) {
+                    return @intCast(currentRegion * 512 + (offset - 1));
                 } else {
-                    const newBufferData = ata.readSectors(drive, continueRegion, 1);
-                    buffer = mem.Stream(u8).init(&newBufferData);
-                    currentRegion = continueRegion;
-                    offset = 1;
-                    continue;
+                    break;
                 }
+            }
+
+            offset += 24;
+            if (offset >= 508) break;
+
+            while (offset < 508 and bufferData[offset] != 0) {
+                offset += 1;
+            }
+            if (offset >= 508) break;
+
+            offset += 1;
+            if (offset + 4 > 508) break;
+
+            offset += 4;
+        }
+
+        if (offset >= 508) {
+            var continueRegion: u32 = 0;
+            continueRegion |= @as(u32, bufferData[508]);
+            continueRegion |= @as(u32, bufferData[509]) << 8;
+            continueRegion |= @as(u32, bufferData[510]) << 16;
+            continueRegion |= @as(u32, bufferData[511]) << 24;
+
+            if (continueRegion == 0) {
+                const nextRegion = findFreeRegion(drive, 0, &[_]u32{});
+                if (nextRegion == 0) {
+                    out.println("No free region found.");
+                    return 0;
+                }
+
+                var sectorData = ata.readSectors(drive, currentRegion, 1);
+                sectorData[508] = @as(u8, @intCast(nextRegion & 0xFF));
+                sectorData[509] = @as(u8, @intCast((nextRegion >> 8) & 0xFF));
+                sectorData[510] = @as(u8, @intCast((nextRegion >> 16) & 0xFF));
+                sectorData[511] = @as(u8, @intCast((nextRegion >> 24) & 0xFF));
+                ata.writeSectors(drive, currentRegion, 1, &sectorData);
+
+                var newSector = [_]u8{0} ** 512;
+                newSector[0] = DIRECTORY_REGION;
+                ata.writeSectors(drive, nextRegion, 1, &newSector);
+
+                return @intCast(nextRegion * 512 + 1);
             } else {
-                return @intCast(currentRegion * 512 + (offset - 1));
+                currentRegion = continueRegion;
+                continue;
             }
         }
-        offset += 24;
-        while (offset < 508 and buffer.get(1).?[0] != 0) {
-            offset += 1; // Skip the name
-        }
-        offset += 1; // Skip the null terminator
-        offset += 4; // Skip the region number
+
+        break;
     }
+
     return 0;
 }
 
@@ -407,20 +457,86 @@ pub fn createDirectory(drive: *ata.AtaDrive, dirName: []const u8, partition: u32
     }
 
     const parentRegion = traverseDirectory(drive, withoutLastComponent, partition);
-    var writeStream = ata.WriteStream.init(drive);
-
     if (parentRegion == 0) {
         out.print("Parent directory not found: ");
         out.println(withoutLastComponent);
         return;
     } else {
-        const size = 1 + 24 + directoryName.len + 1 + 4; // Type + timestamps + name + null terminator + region number
+        const size = 1 + 24 + directoryName.len + 1 + 4;
         const freeEntry = findFreeDirectoryEntry(drive, parentRegion, size);
+        out.println("Free entry found at: ");
+        out.printHex(freeEntry);
+        out.println("");
         if (freeEntry == 0) {
             out.println("No free directory entry found.");
             return;
         }
-        writeStream.seek(freeEntry);
-        writeStream.write(1, &[_]u8{DIRECTORY_REGION});
+
+        const entrySector = freeEntry / 512;
+        const entryOffset = freeEntry % 512;
+
+        var sectorBuffer = ata.readSectors(drive, @intCast(entrySector), 1);
+
+        var bufferOffset: usize = @intCast(entryOffset);
+
+        sectorBuffer[bufferOffset] = DIRECTORY_REGION;
+        bufferOffset += 1;
+
+        const currentTime = rtc.getUnixTime();
+        const timeBytes = mem.reinterpretToBytes(u64, currentTime);
+
+        @memcpy(sectorBuffer[bufferOffset .. bufferOffset + 8], timeBytes[0..8]);
+        bufferOffset += 8;
+
+        @memcpy(sectorBuffer[bufferOffset .. bufferOffset + 8], timeBytes[0..8]);
+        bufferOffset += 8;
+
+        @memcpy(sectorBuffer[bufferOffset .. bufferOffset + 8], timeBytes[0..8]);
+        bufferOffset += 8;
+
+        @memcpy(sectorBuffer[bufferOffset .. bufferOffset + directoryName.len], directoryName);
+        bufferOffset += directoryName.len;
+
+        sectorBuffer[bufferOffset] = 0;
+        bufferOffset += 1;
+
+        const regionNumber = findFreeRegion(drive, partition, &[_]u32{});
+        if (regionNumber == 0) {
+            out.println("No free region found for new directory.");
+            return;
+        }
+
+        const regionBytes = mem.reinterpretToBytes(u32, regionNumber);
+        @memcpy(sectorBuffer[bufferOffset .. bufferOffset + 4], regionBytes[0..4]);
+
+        ata.writeSectors(drive, @intCast(entrySector), 1, &sectorBuffer);
+
+        var newSector: [512]u8 = [_]u8{0} ** 512;
+        var newSectorOffset: usize = 0;
+
+        newSector[newSectorOffset] = DIRECTORY_REGION;
+        newSectorOffset += 1;
+
+        newSector[newSectorOffset] = DIRECTORY_REGION;
+        newSectorOffset += 1;
+
+        @memcpy(newSector[newSectorOffset .. newSectorOffset + 8], timeBytes[0..8]); // Last accessed
+        newSectorOffset += 8;
+        @memcpy(newSector[newSectorOffset .. newSectorOffset + 8], timeBytes[0..8]); // Last modified
+        newSectorOffset += 8;
+        @memcpy(newSector[newSectorOffset .. newSectorOffset + 8], timeBytes[0..8]); // Created
+        newSectorOffset += 8;
+
+        newSector[newSectorOffset] = '.';
+        newSectorOffset += 1;
+
+        newSector[newSectorOffset] = 0;
+        newSectorOffset += 1;
+
+        @memcpy(newSector[newSectorOffset .. newSectorOffset + 4], regionBytes[0..4]);
+
+        ata.writeSectors(drive, regionNumber, 1, &newSector);
+
+        return;
     }
 }
