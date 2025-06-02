@@ -85,7 +85,12 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     const fnt = font.Font.init();
     var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
 
+    var drive = ata.makeController().master;
+
     out.switchToGraphics(&fbTerminal);
+    interfaces.setupInterfaces(&fbTerminal, &drive);
+    out.printHex(@intFromPtr(&fbTerminal));
+    out.println("");
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.02\n");

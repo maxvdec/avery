@@ -5,10 +5,14 @@ const vfs = @import("vfs");
 const ata = @import("ata");
 const multiboot2 = @import("multiboot2");
 const out = @import("output");
+const str = @import("string");
 
-pub fn setupInterfaces(term: terminal.FramebufferTerminal, drive: *ata.AtaDrive) void {
+pub fn setupInterfaces(term: *terminal.FramebufferTerminal, drive: *ata.AtaDrive) void {
     @setRuntimeSafety(false);
-    const bytes = mem.reinterpretToBytes(multiboot2.FramebufferTag, term.framebuffer.framebufferTag);
+    const n64Bytes = @intFromPtr(term);
+    const bytes: []const u8 = &str.u64ToBytes(n64Bytes);
+    out.printHex(n64Bytes);
+    out.println("");
     const framebufferRoute: []const u8 = "/dev/stdout";
     if (!vfs.fileExists(drive, framebufferRoute, 0)) {
         if (!vfs.directoryExists(drive, "dev", 0)) {

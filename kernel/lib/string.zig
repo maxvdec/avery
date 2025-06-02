@@ -295,3 +295,17 @@ pub fn makeOwned(str: []u8) String {
     _ = sys.memcpy(buffer.ptr, str.ptr, str.len);
     return String.fromRuntime(buffer);
 }
+
+const Size = 8;
+
+pub fn u64ToBytes(num: u64) [Size]u8 {
+    @setRuntimeSafety(false);
+    var result: [Size]u8 = undefined;
+
+    var i: usize = 0;
+    while (i < Size) : (i += 1) {
+        result[Size - 1 - i] = @intCast(num >> @as(u6, @intCast(i * 8)));
+    }
+
+    return result;
+}
