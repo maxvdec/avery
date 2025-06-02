@@ -212,8 +212,6 @@ pub fn traverseDirectory(drive: *ata.AtaDrive, dirName: []const u8, partition: u
         }
         const region = findFileInDirectory(drive, componentStr, current_region);
         if (region == 0) {
-            out.print("Directory not found: ");
-            out.println(componentStr);
             return 0;
         }
         current_region = region;
@@ -635,8 +633,6 @@ pub fn writeToFile(drive: *ata.AtaDrive, fileName: []const u8, contents: []const
 
     const parentRegion = traverseDirectory(drive, withoutLastComponent, partition);
     if (parentRegion == 0) {
-        out.print("Parent directory not found: ");
-        out.println(withoutLastComponent);
         return;
     }
 
@@ -644,7 +640,6 @@ pub fn writeToFile(drive: *ata.AtaDrive, fileName: []const u8, contents: []const
     var currentRegion: u32 = 0;
 
     if (fileRegion == 0) {
-        out.println("File doesn't exist, creating it...");
         createFile(drive, fileName, partition);
 
         const newFileRegion = findFileInDirectory(drive, fileNameOnly, parentRegion);
@@ -800,4 +795,80 @@ fn updateFileTimestamp(drive: *ata.AtaDrive, directoryRegion: u32, fileName: []c
             (@as(u32, nextBytes[2]) << 8) |
             (@as(u32, nextBytes[3]));
     }
+}
+
+pub fn fileExists(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) bool {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return false;
+    }
+
+    const partition_data = detectPartitions(drive);
+    if (partition >= partition_data.len) {
+        return false;
+    }
+    if (!partition_data[partition].exists) {
+        return false;
+    }
+
+    var withoutLastComponent: []const u8 = "";
+    var fileNameOnly: []const u8 = "";
+    const lastSlashIndex = mem.findLast(u8, fileName, '/');
+    if (lastSlashIndex == null) {
+        withoutLastComponent = "";
+        fileNameOnly = fileName;
+    } else {
+        withoutLastComponent = fileName[0..lastSlashIndex.?];
+        fileNameOnly = fileName[lastSlashIndex.? + 1 ..];
+    }
+
+    const parentRegion = traverseDirectory(drive, withoutLastComponent, partition);
+    if (parentRegion == 0) {
+        return false;
+    }
+
+    const fileRegion = findFileInDirectory(drive, fileNameOnly, parentRegion);
+    return fileRegion != 0;
+}
+
+pub fn directoryExists(drive: *ata.AtaDrive, dirName: []const u8, partition: u32) bool {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return false;
+    }
+
+    const partition_data = detectPartitions(drive);
+    if (partition >= partition_data.len) {
+        return false;
+    }
+    if (!partition_data[partition].exists) {
+        return false;
+    }
+
+    var withoutLastComponent: []const u8 = "";
+    var dirNameOnly: []const u8 = "";
+    const lastSlashIndex = mem.findLast(u8, dirName, '/');
+    if (lastSlashIndex == null) {
+        withoutLastComponent = "";
+        dirNameOnly = dirName;
+    } else {
+        withoutLastComponent = dirName[0..lastSlashIndex.?];
+        dirNameOnly = dirName[lastSlashIndex.? + 1 ..];
+    }
+
+    const parentRegion = traverseDirectory(drive, withoutLastComponent, partition);
+    if (parentRegion == 0) {
+        return false;
+    }
+
+    const entries = parseDirectory(drive, parentRegion, ".");
+    for (entries.entries) |entry| {
+        if (mem.compareBytes(u8, entry.name, dirNameOnly) and entry.isDirectory) {
+            return true;
+        }
+    }
+
+    return false;
 }

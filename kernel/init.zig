@@ -21,6 +21,7 @@ const font = @import("font");
 const terminal = @import("terminal");
 const pit = @import("pit");
 const syscall = @import("syscall");
+const interfaces = @import("interfaces");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -83,9 +84,8 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     const fb = framebuffer.Framebuffer.init(fbTag);
     const fnt = font.Font.init();
     var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
-    out.println("Graphics initialized.");
 
-    out.switchToGraphics(fbTerminal);
+    out.switchToGraphics(&fbTerminal);
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.02\n");

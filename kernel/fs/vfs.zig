@@ -34,6 +34,17 @@ pub const SupportedFileSystems = enum(usize) {
     IonicFS = 1,
 };
 
+pub const DriveTag = enum(u8) {
+    AtaDrive = 0x01,
+    Ram = 0x02,
+};
+
+// TODO: Create an abstraction for drives
+pub const Drive = struct {
+    tag: DriveTag,
+    ata: ?ata.AtaDrive = null,
+};
+
 pub fn detectFileSystem(drive: *ata.AtaDrive) []const u8 {
     @setRuntimeSafety(false);
     if (!drive.is_present) {
@@ -117,6 +128,7 @@ pub fn readFile(drive: *ata.AtaDrive, partitionNumber: u8, fileName: []const u8)
         out.println("Partition does not exist.");
         return null;
     }
+    _ = detectPartitions(drive);
 
     switch (drive.fs) {
         0x01 => {
@@ -198,6 +210,7 @@ pub fn getDirectory(drive: *ata.AtaDrive, dirName: []const u8, partition: u32) D
         out.println("No drive detected.");
         return Directory{ .region = 0, .name = "", .entries = &[_]DirectoryEntry{} };
     }
+    _ = detectPartitions(drive);
 
     switch (drive.fs) {
         0x01 => {
@@ -225,6 +238,7 @@ pub fn makeNewDirectory(
         out.println("No drive detected.");
         return null;
     }
+    _ = detectPartitions(drive);
 
     switch (drive.fs) {
         0x01 => {
@@ -247,6 +261,7 @@ pub fn createFile(
         out.println("No drive detected.");
         return null;
     }
+    _ = detectPartitions(drive);
 
     switch (drive.fs) {
         0x01 => {
@@ -270,6 +285,7 @@ pub fn writeToFile(
         out.println("No drive detected.");
         return null;
     }
+    _ = detectPartitions(drive);
 
     switch (drive.fs) {
         0x01 => {
@@ -278,6 +294,52 @@ pub fn writeToFile(
         else => {
             out.println("Unsupported file system detected.");
             return null;
+        },
+    }
+}
+
+pub fn fileExists(
+    drive: *ata.AtaDrive,
+    fileName: []const u8,
+    partition: u32,
+) bool {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return false;
+    }
+    _ = detectPartitions(drive);
+
+    switch (drive.fs) {
+        0x01 => {
+            return ionicfs.fileExists(drive, fileName, partition);
+        },
+        else => {
+            out.println("Unsupported file system detected.");
+            return false;
+        },
+    }
+}
+
+pub fn directoryExists(
+    drive: *ata.AtaDrive,
+    dirName: []const u8,
+    partition: u32,
+) bool {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return false;
+    }
+    _ = detectPartitions(drive);
+
+    switch (drive.fs) {
+        0x01 => {
+            return ionicfs.directoryExists(drive, dirName, partition);
+        },
+        else => {
+            out.println("Unsupported file system detected.");
+            return false;
         },
     }
 }

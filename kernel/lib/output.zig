@@ -16,7 +16,7 @@ pub const OutputMode = enum {
 pub var mode: OutputMode = OutputMode.VgaText;
 var modeSave: OutputMode = OutputMode.VgaText;
 
-pub var term: terminal.FramebufferTerminal = undefined;
+pub var term: *terminal.FramebufferTerminal = undefined;
 
 pub fn clear() void {
     if (mode == OutputMode.VgaText) {
@@ -70,7 +70,8 @@ pub fn switchToVga() void {
     mode = OutputMode.VgaText;
 }
 
-pub fn switchToGraphics(fbTerminal: terminal.FramebufferTerminal) void {
+pub fn switchToGraphics(fbTerminal: *terminal.FramebufferTerminal) void {
+    @setRuntimeSafety(false);
     mode = OutputMode.Graphics;
     term = fbTerminal;
 }

@@ -805,11 +805,8 @@ pub fn move(dst: [*]u8, src: [*]const u8, count: usize) void {
 }
 
 pub fn reinterpretToBytes(comptime T: type, value: T) []const u8 {
-    @setRuntimeSafety(false);
-    const size = @sizeOf(T);
-    var bytes: [@sizeOf(T)]u8 = undefined;
-    bytes = @bitCast(value);
-    return bytes[0..size];
+    const ptr: *const [@sizeOf(T)]u8 = @ptrCast(&value);
+    return &ptr.*;
 }
 
 pub fn WriteStream(comptime T: type) type {

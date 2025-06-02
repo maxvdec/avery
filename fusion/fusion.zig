@@ -45,16 +45,14 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
     @setRuntimeSafety(false);
     var lastExitCode: u8 = 0;
 
-    // Use a fixed buffer for cwd to avoid corruption
     var cwd_buffer: [256]u8 = undefined;
     cwd_buffer[0] = '/';
     cwd_buffer[1] = 0;
     var cwd_len: usize = 1;
 
-    _ = getAtaController(); // Initialize ATA controller
+    _ = getAtaController();
 
     while (true) {
-        // Create current working directory string safely
         const cwd = cwd_buffer[0..cwd_len];
 
         out.print(cwd);
@@ -211,13 +209,22 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
             lastExitCode = 0;
         } else if (command.startsWith(str.make("read"))) {
             const parts = command.splitChar(' ');
+            var printHex: bool = false;
             if (parts.len < 2) {
                 out.println("Usage: read <filename>");
                 lastExitCode = 1;
                 continue;
+            } else if (parts.len == 3) {
+                if (parts.get(1).?.isEqualTo(str.make("-h"))) {
+                    printHex = true;
+                } else {
+                    out.println("Usage: read <filename> [-h]");
+                    lastExitCode = 1;
+                    continue;
+                }
             }
 
-            const fileName = parts.get(1).?;
+            const fileName = parts.get(if (printHex) 2 else 1).?;
 
             if (fileName.startsWith(str.make("/"))) {
                 var route_buffer: [256]u8 = undefined;
@@ -254,8 +261,16 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                     lastExitCode = 1;
                     continue;
                 }
-                out.print(file.?);
-                out.println("");
+                if (printHex) {
+                    for (file.?) |byte| {
+                        out.printHex(byte);
+                        out.print(" ");
+                    }
+                    out.println("");
+                } else {
+                    out.print(file.?);
+                    out.println("");
+                }
                 lastExitCode = 0;
             }
         } else if (command.startsWith(str.make("disk"))) {
