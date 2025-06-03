@@ -3,26 +3,43 @@ global int80_handler
 extern syscall_handler
 
 int80_handler:
-    pusha
+    push ds
+    push es
+    push fs
+    push gs
 
-    mov eax, [esp + 28]  ; EAX (syscall number)
-    mov ebx, [esp + 16]  ; EBX (arg1)
-    mov ecx, [esp + 24]  ; ECX (arg2)  
-    mov edx, [esp + 20]  ; EDX (arg3)
-    mov esi, [esp + 4]   ; ESI (arg4)
-    mov edi, [esp + 0]   ; EDI (arg5)
-    
-    push edi    
-    push esi    
-    push edx    
-    push ecx    
-    push ebx    
-    push eax    
-    
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    pusha  
+
+    mov eax, [esp + 32]  
+    mov ebx, [esp + 36]  
+    mov ecx, [esp + 40]  
+    mov edx, [esp + 44]  
+    mov esi, [esp + 48]  
+    mov edi, [esp + 52]  
+
+    push edi
+    push esi
+    push edx
+    push ecx
+    push ebx
+    push eax
+
     call syscall_handler
-    add esp, 24  
-    
-    mov [esp + 28], eax
-    
-    popa
+    add esp, 24
+
+    mov [esp + 32], eax  
+
+    popa  
+
+    pop gs
+    pop fs
+    pop es
+    pop ds
+
     iretd

@@ -12,7 +12,7 @@ const GdtPointer = packed struct {
     base: u32 = 0,
 };
 
-export var gdt: [3]GdtEntry = [_]GdtEntry{ .{}, .{}, .{} };
+export var gdt: [6]GdtEntry = [_]GdtEntry{ .{}, .{}, .{}, .{}, .{}, .{} };
 var gp: GdtPointer align(16) = .{};
 
 export fn get_gdt_ptr() *GdtPointer {

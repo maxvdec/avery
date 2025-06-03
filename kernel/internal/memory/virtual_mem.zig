@@ -7,9 +7,14 @@ pub const PAGE_PRESENT = 1 << 0;
 pub const PAGE_RW = 1 << 1;
 pub const PAGE_USER = 1 << 2;
 
-var page_directory: *[1024]u32 = undefined;
+pub const USER_SPACE_START: usize = 0x400000;
+pub const USER_SPACE_END: usize = 0x80000000;
+pub const KERNEL_MEM_BASE: usize = 0xC0000000;
+
+pub var page_directory: *[1024]u32 = undefined;
 
 var next_free_virt: usize = 0x1000000;
+var next_user_virt: usize = USER_SPACE_START;
 
 pub fn init() void {
     @setRuntimeSafety(false);
@@ -187,36 +192,94 @@ pub fn mapMemory(phys_addr: usize, size: usize) u32 {
 
     var i: usize = 0;
     while (i < pages_needed) : (i += 1) {
-        out.println("Mapping page ");
-        out.printn(i);
-        out.print(" of ");
-        out.printn(pages_needed);
         mapPage(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, flags);
-        out.print("Mapped physical address ");
-        out.printHex(phys_addr + i * PAGE_SIZE);
-        out.print(" to virtual address ");
-        out.printHex(virt_addr + i * PAGE_SIZE);
-        out.print("\n");
     }
 
     return virt_addr;
 }
 
-pub const KERNEL_MEM_BASE: usize = 0xC0000000;
-
 pub fn mapKernelMemory(phys_addr: usize, size: usize) u32 {
     if (phys_addr % PAGE_SIZE != 0) return 0;
 
     const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-    const flags = PAGE_PRESENT | PAGE_RW | PAGE_USER;
+    const flags = PAGE_PRESENT | PAGE_RW;
 
-    const virt_addr = KERNEL_MEM_BASE + next_free_virt;
-    next_free_virt += pages_needed * PAGE_SIZE;
+    const virt_addr = KERNEL_MEM_BASE + (next_free_virt - 0x1000000);
 
     var i: usize = 0;
     while (i < pages_needed) : (i += 1) {
         mapPage(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, flags);
     }
 
+    next_free_virt += pages_needed * PAGE_SIZE;
+
     return virt_addr;
+}
+
+pub fn allocUserPages(size: usize) ?usize {
+    @setRuntimeSafety(false);
+    const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+    if (next_user_virt + (pages_needed * PAGE_SIZE) >= USER_SPACE_END) {
+        out.print("User virtual memory exhausted!\n");
+        return null;
+    }
+
+    const virt_addr = next_user_virt;
+
+    var i: usize = 0;
+    while (i < pages_needed) : (i += 1) {
+        const phys = pmm.allocPage() orelse {
+            var j: usize = 0;
+            while (j < i) : (j += 1) {
+                const cleanup_virt = virt_addr + j * PAGE_SIZE;
+                if (translate(cleanup_virt)) |p| {
+                    pmm.freePage(p);
+                }
+                unmapPage(cleanup_virt);
+            }
+            return null;
+        };
+        mapPage(virt_addr + i * PAGE_SIZE, phys, PAGE_PRESENT | PAGE_RW | PAGE_USER);
+    }
+
+    next_user_virt += pages_needed * PAGE_SIZE;
+
+    return virt_addr;
+}
+
+pub fn freeUserPages(virt_start: usize, size: usize) void {
+    const pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+    var i: usize = 0;
+    while (i < pages) : (i += 1) {
+        const phys = translate(virt_start + i * PAGE_SIZE);
+        if (phys) |p| {
+            pmm.freePage(p);
+        }
+        unmapPage(virt_start + i * PAGE_SIZE);
+    }
+}
+
+pub fn physicalToVirtual(phys: usize) ?usize {
+    @setRuntimeSafety(false);
+
+    for (0..1024) |pd_index| {
+        if ((page_directory[pd_index] & PAGE_PRESENT) == 0) continue;
+
+        const pt_phys = page_directory[pd_index] & 0xFFFFF000;
+        const pt = @as(*[1024]u32, @ptrFromInt(pt_phys));
+
+        for (0..1024) |pt_index| {
+            if ((pt[pt_index] & PAGE_PRESENT) == 0) continue;
+
+            const phys_base = pt[pt_index] & 0xFFFFF000;
+            if (phys_base == (phys & 0xFFFFF000)) {
+                const offset = phys & 0xFFF;
+                return ((pd_index << 22) | (pt_index << 12)) + offset;
+            }
+        }
+    }
+
+    return null;
 }

@@ -46,7 +46,7 @@ pub fn readbytes(len: usize) []const u8 {
     @setRuntimeSafety(false);
     var buffer: [1024]u8 = undefined;
     if (len > buffer.len) {
-        return &buffer[0..0]; // Return empty slice if requested length exceeds buffer size
+        return &[_]u8{}; // Return empty slice if requested length exceeds buffer size
     }
 
     var i: usize = 0;

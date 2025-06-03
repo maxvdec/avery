@@ -721,20 +721,11 @@ pub fn readBytes(comptime size: comptime_int, buff: [*]u8) ?[]u8 {
     return bytes;
 }
 
-pub fn getStackTop() usize {
-    @setRuntimeSafety(false);
-    var stack_top: usize = 0;
-    asm volatile ("mov %%esp, %[stack_top]"
-        : [stack_top] "=r" (stack_top),
-    );
-    return stack_top;
-}
-
 pub fn printStackTop() void {
     @setRuntimeSafety(false);
-    const stack_top = getStackTop();
+    const stack_tp = getStackTop();
     out.print("Stack top is: ");
-    out.printHex(stack_top);
+    out.printHex(stack_tp);
     out.println("");
 }
 
@@ -763,19 +754,17 @@ pub fn findLast(comptime T: type, data: []const T, value: T) ?usize {
     return null;
 }
 
-extern const stack_bottom: u8;
-
 pub fn printStack() void {
     @setRuntimeSafety(false);
-    const stack_top = getStackTop();
+    const stack_tp = getStackTop();
     out.print("Stack top is: ");
-    out.printHex(stack_top);
+    out.printHex(stack_tp);
     out.println("");
     out.print("Stack bottom is: ");
     out.printn(@intFromPtr(@as(*u32, @ptrFromInt(stack_bottom))));
     out.println("");
     out.print("Stack size is:");
-    out.printn(stack_top - stack_bottom);
+    out.printn(stack_tp - stack_bottom);
     out.println("");
 }
 
@@ -887,4 +876,17 @@ pub fn joinBytes(comptime T: type, a: []const T, b: []const T) []T {
         result[a.len + i] = b[i];
     }
     return result[0..result_len];
+}
+
+extern var stack_top: u8;
+extern var stack_bottom: u8;
+
+pub inline fn getStackTop() usize {
+    @setRuntimeSafety(false);
+    return @intFromPtr(&stack_top);
+}
+
+pub inline fn getStackBottom() usize {
+    @setRuntimeSafety(false);
+    return @intFromPtr(&stack_bottom);
 }

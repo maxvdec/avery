@@ -111,6 +111,9 @@ fn read(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32) u64 {
         2 => {
             return INVALID_FD;
         },
+        else => {
+            return INVALID_FD; // Invalid file descriptor
+        },
     }
 }
 

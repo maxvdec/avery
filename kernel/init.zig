@@ -21,8 +21,9 @@ const font = @import("font");
 const terminal = @import("terminal");
 const pit = @import("pit");
 const syscall = @import("syscall");
-const interfaces = @import("interfaces");
 const vfs = @import("vfs");
+const tss = @import("tss");
+const process = @import("process");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -54,11 +55,17 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     out.initOutputs();
     out.switchToSerial();
 
+    // Sanity checks
     if (magic != MULTIBOOT2_HEADER_MAGIC) {
         out.printHex(magic);
         sys.panic("Bootloader mismatch. Try using Multiboot2 or reconfigure your bootloader.");
     }
+
+    // Initialize core services
     gdt.init();
+    tss.init();
+    gdt.gdt_flush();
+    tss.loadTss();
     idt.init();
     isr.init();
     asm volatile ("sti");
@@ -67,6 +74,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     syscall.initSyscall();
     out.println("All core services initialized.");
 
+    // Setup memory management
     const bootInfo = multiboot2.getBootInfo(addr);
     const memMap = multiboot2.getMemoryMapTag(bootInfo);
     if (memMap.isPresent() == false) {
@@ -87,15 +95,46 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     virtmem.init();
 
     out.println("Virtual memory initialized.");
+
+    // Get some utilities for the kernel
     _ = alloc.initHeap();
     _ = fusion.getAtaController();
 
+    // Obtain the framebuffer and font
     const fb = framebuffer.Framebuffer.init(fbTag);
     const fnt = font.Font.init();
     var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
 
+    const hello_world_program = [_]u8{
+        // write(1, 0x400100, 14)
+        0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1         ; syscall: write
+        0xBB, 0x01, 0x00, 0x00, 0x00, // mov ebx, 1         ; fd: stdout
+        0xB9, 0x00, 0x01, 0x40, 0x00, // mov ecx, 0x400100  ; message address
+        0xBA, 0x0E, 0x00, 0x00, 0x00, // mov edx, 14        ; length
+        0xCD, 0x80, // int 0x80           ; invoke syscall
+
+        // infinite loop
+        0xEB, 0xFE, // jmp $              ; jump to self
+
+        // Message at 0x400100
+        'H',  'e',
+        'l',  'l',
+        'o',  ',',
+        ' ',  'W',
+        'o',  'r',
+        'l',  'd',
+        '!',  '\n',
+    };
+
+    // Initialize the terminal
     out.switchToGraphics(&fbTerminal);
-    out.println("");
+
+    const proc = process.Process.create(&hello_world_program) orelse {
+        out.println("Failed to create process for hello world program.");
+        sys.panic("Process creation failed.");
+    };
+    proc.switchTo();
+
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.02\n");
@@ -133,19 +172,19 @@ export fn kern_writePath(buf: [*]const u8, len: usize, directory: [*]const u8, d
     return 0;
 }
 
-export fn kern_read(buf: [*]const u8, len: usize, directory: [*]const u8, directoryLen: usize, partitionNumber: u32) u32 {
+export fn kern_read(buf: [*]u8, len: usize, directory: [*]const u8, directoryLen: usize, partitionNumber: u32) u32 {
     const fileContents = vfs.readFile(&fusion.getAtaController().master, @intCast(partitionNumber), directory[0..directoryLen]);
     if (fileContents == null) {
         return 1; // Failed to read file
     }
     const bytesToCopy = @min(len, fileContents.?.len);
-    _ = memcpy(buf.ptr, fileContents.?.ptr, bytesToCopy);
+    _ = memcpy(buf, fileContents.?.ptr, bytesToCopy);
     return bytesToCopy;
 }
 
 export fn kern_readStdin(buf: [*]u8, len: usize) u32 {
     const input = in.readbytes(len);
     const bytesToCopy = @min(len, input.len);
-    _ = memcpy(buf.ptr, input.ptr, bytesToCopy);
+    _ = memcpy(buf, input.ptr, bytesToCopy);
     return bytesToCopy;
 }
