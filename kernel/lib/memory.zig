@@ -873,3 +873,18 @@ pub fn WriteStream(comptime T: type) type {
         }
     };
 }
+
+pub fn joinBytes(comptime T: type, a: []const T, b: []const T) []T {
+    @setRuntimeSafety(false);
+    const result_len = a.len + b.len;
+    var result: [*]T = alloc.request(result_len * @sizeOf(T)) orelse {
+        sys.panic("Failed to allocate memory for concatenation");
+    };
+    for (0..a.len) |i| {
+        result[i] = a[i];
+    }
+    for (0..b.len) |i| {
+        result[a.len + i] = b[i];
+    }
+    return result[0..result_len];
+}

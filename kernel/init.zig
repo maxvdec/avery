@@ -22,6 +22,7 @@ const terminal = @import("terminal");
 const pit = @import("pit");
 const syscall = @import("syscall");
 const interfaces = @import("interfaces");
+const vfs = @import("vfs");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -39,6 +40,12 @@ var memoryMap: multiboot2.MemoryMapTag = undefined;
 pub fn getMemoryMap() multiboot2.MemoryMapTag {
     return memoryMap;
 }
+
+extern fn memcpy(
+    dest: [*]u8,
+    src: [*]const u8,
+    len: usize,
+) [*]u8;
 
 const STACK_SIZE: usize = 16384; // 16 KiB
 
@@ -78,27 +85,67 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     physmem.init(memMap.unwrap(), getKernelEnd());
     out.println("Physical memory initialized.");
     virtmem.init();
+
     out.println("Virtual memory initialized.");
     _ = alloc.initHeap();
+    _ = fusion.getAtaController();
 
     const fb = framebuffer.Framebuffer.init(fbTag);
     const fnt = font.Font.init();
     var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
 
-    var drive = ata.makeController().master;
-
     out.switchToGraphics(&fbTerminal);
-    interfaces.setupInterfaces(&fbTerminal, &drive);
-    out.printHex(@intFromPtr(&fbTerminal));
     out.println("");
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.02\n");
-    _ = syscall.perform(10, 0, 0, 0, 0, 0);
 
     fusion.main(getMemoryMap());
     while (true) {
         fbTerminal.updateCursor();
         sys.delay(16);
     }
+}
+
+// These functions are used by the syscall handler to print messages to the terminal.
+// They are sort of the services that the kernel provides to user programs.
+export fn kern_print(string: [*]const u8, len: usize) void {
+    out.println(string[0..len]);
+}
+
+export fn kern_writePath(buf: [*]const u8, len: usize, directory: [*]const u8, directoryLen: usize, partitionNumber: u32) u32 {
+    if (!vfs.fileExists(&fusion.getAtaController().master, directory[0..directoryLen], partitionNumber)) {
+        const result = vfs.createFile(&fusion.getAtaController().master, directory[0..directoryLen], partitionNumber);
+        if (result == null) {
+            return 1; // Failed to create file
+        }
+    }
+
+    const fileContents = vfs.readFile(&fusion.getAtaController().master, @intCast(partitionNumber), buf[0..len]);
+    if (fileContents == null) {
+        return 2; // Failed to read file
+    }
+    const joinedText = mem.joinBytes(u8, fileContents.?, buf[0..len]);
+    const result = vfs.writeToFile(&fusion.getAtaController().master, directory[0..directoryLen], joinedText, partitionNumber);
+    if (result == null) {
+        return 3; // Failed to write to file
+    }
+    return 0;
+}
+
+export fn kern_read(buf: [*]const u8, len: usize, directory: [*]const u8, directoryLen: usize, partitionNumber: u32) u32 {
+    const fileContents = vfs.readFile(&fusion.getAtaController().master, @intCast(partitionNumber), directory[0..directoryLen]);
+    if (fileContents == null) {
+        return 1; // Failed to read file
+    }
+    const bytesToCopy = @min(len, fileContents.?.len);
+    _ = memcpy(buf.ptr, fileContents.?.ptr, bytesToCopy);
+    return bytesToCopy;
+}
+
+export fn kern_readStdin(buf: [*]u8, len: usize) u32 {
+    const input = in.readbytes(len);
+    const bytesToCopy = @min(len, input.len);
+    _ = memcpy(buf.ptr, input.ptr, bytesToCopy);
+    return bytesToCopy;
 }

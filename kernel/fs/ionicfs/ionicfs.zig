@@ -252,11 +252,9 @@ pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]c
         out.println("Partition does not exist.");
         return null;
     }
-
     var filePath: []const u8 = fileName;
     var dirPath: []const u8 = "";
     var bareFileName: []const u8 = "";
-
     const lastSlashIndex = mem.findLast(u8, filePath, '/');
     if (lastSlashIndex != null) {
         dirPath = filePath[0..lastSlashIndex.?];
@@ -264,7 +262,6 @@ pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]c
     } else {
         bareFileName = fileName;
     }
-
     const dirRegion = traverseDirectory(drive, dirPath, partition);
     var region = findFileInDirectory(drive, bareFileName, dirRegion);
     if (region == 0) {
@@ -293,13 +290,28 @@ pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]c
             sector = mem.Stream(u8).init(&nextSectorData);
         }
     }
-
     if (buffer.len == 0) {
         out.println("File is empty.");
         return null;
     }
-    const data = buffer.coerce();
-    return data;
+
+    var data = buffer.coerce();
+
+    var start: usize = 0;
+    while (start < data.len and data[start] == 0) {
+        start += 1;
+    }
+
+    var end: usize = data.len;
+    while (end > start and data[end - 1] == 0) {
+        end -= 1;
+    }
+
+    if (start >= end) {
+        return &[_]u8{};
+    }
+
+    return data[start..end];
 }
 
 pub fn findFreeRegion(drive: *ata.AtaDrive, partition: u32, ignore: []u32) u32 {
