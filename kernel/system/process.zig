@@ -41,11 +41,13 @@ pub const Process = struct {
     entry_point: usize,
     context: ProcessContext,
 
-    const STACK_SIZE = 0x2000; // 8Kib stack
-    const USER_STACK_BASE = 0x7FFFF000;
+    const STACK_SIZE = 0x2000; // 8KiB stack
+    const USER_STACK_BASE = 0x7FFFE000; // Moved down to align with actual mapping
 
     pub fn create(program_data: []const u8) ?*Process {
         @setRuntimeSafety(false);
+        out.preserveMode();
+        out.switchToSerial();
 
         const process = alloc.store(Process);
         process.pid = getNextPid();
@@ -62,14 +64,17 @@ pub const Process = struct {
 
         const new_pd = @as(*[1024]u32, @ptrFromInt(pd_virt));
 
+        // Initialize page directory
         for (new_pd) |*entry| entry.* = 0;
 
         const current_pd = virtmem.page_directory;
 
+        // Copy kernel mappings (must include identity mapping for low memory)
         if (current_pd[0] != 0) {
             new_pd[0] = current_pd[0];
         }
 
+        // Copy kernel space (3GB+)
         var kernel_mappings_copied: u32 = 0;
         for (768..1024) |i| {
             new_pd[i] = current_pd[i];
@@ -78,51 +83,101 @@ pub const Process = struct {
             }
         }
 
+        // Copy any additional kernel mappings
         for (512..768) |i| {
             if (current_pd[i] != 0) {
                 new_pd[i] = current_pd[i];
             }
         }
 
+        // Map program code with proper alignment
         const program_size = program_data.len;
         const program_pages = (program_size + 0xFFF) / 0x1000;
         const user_base = virtmem.USER_SPACE_START;
 
+        out.print("Creating process: program_size=");
+        out.printHex(program_size);
+        out.print(", program_pages=");
+        out.printn(program_pages);
+        out.print(", user_base=");
+        out.printHex(user_base);
+        out.println("");
+
+        // Allocate and map program pages
         var i: usize = 0;
         while (i < program_pages) : (i += 1) {
             const phys_page = physmem.allocPage() orelse {
                 cleanup(process, i);
                 return null;
             };
-            virtmem.mapPageInPD(user_base + i * 4096, phys_page, virtmem.PAGE_PRESENT | virtmem.PAGE_RW | virtmem.PAGE_USER, new_pd);
+
+            const virt_addr = user_base + i * 4096;
+            virtmem.mapPageInPD(virt_addr, phys_page, virtmem.PAGE_PRESENT | virtmem.PAGE_RW | virtmem.PAGE_USER, new_pd);
+
+            out.print("Mapped program page ");
+            out.printn(i);
+            out.print(" at virt=");
+            out.printHex(virt_addr);
+            out.print(" to phys=");
+            out.printHex(phys_page);
+            out.println("");
         }
 
-        const temp_mapping = virtmem.allocVirtual(program_size, virtmem.PAGE_PRESENT | virtmem.PAGE_RW) orelse {
-            cleanup(process, program_pages);
-            return null;
-        };
+        // Copy program data directly into the mapped pages
+        // We need to temporarily switch to the new page directory to copy data
+        const old_cr3 = getCurrentPageDirectory();
+        virtmem.loadPageDirectory(pd_phys);
 
-        i = 0;
-        while (i < program_pages) : (i += 1) {
-            const phys = virtmem.translate(user_base + i * 4096) orelse unreachable;
-            virtmem.mapPage(temp_mapping + i * 4096, phys, virtmem.PAGE_PRESENT | virtmem.PAGE_RW);
+        // Copy program data
+        _ = memcpy(@as([*]u8, @ptrFromInt(user_base)), program_data.ptr, program_data.len);
+
+        // Clear any remaining space in the last page
+        if (program_size % 4096 != 0) {
+            const remaining = 4096 - (program_size % 4096);
+            const clear_start = user_base + program_size;
+            const clear_ptr = @as([*]u8, @ptrFromInt(clear_start));
+            for (0..remaining) |j| {
+                clear_ptr[j] = 0;
+            }
         }
 
-        _ = memcpy(@as([*]u8, @ptrFromInt(temp_mapping)), program_data.ptr, program_data.len);
-        virtmem.freeVirtual(temp_mapping, program_size);
+        // Switch back to original page directory
+        virtmem.loadPageDirectory(old_cr3);
 
+        // Map user stack - FIXED: Use aligned base address
         const stack_pages = STACK_SIZE / 4096;
-        const stack_base = USER_STACK_BASE - STACK_SIZE;
+        const stack_bottom = USER_STACK_BASE - STACK_SIZE + 4096; // Start at page boundary
+
+        out.print("Creating stack: USER_STACK_BASE=");
+        out.printHex(USER_STACK_BASE);
+        out.print(", STACK_SIZE=");
+        out.printHex(STACK_SIZE);
+        out.print(", stack_bottom=");
+        out.printHex(stack_bottom);
+        out.print(", stack_pages=");
+        out.printn(stack_pages);
+        out.println("");
 
         i = 0;
         while (i < stack_pages) : (i += 1) {
+            const stack_page_addr = stack_bottom + i * 4096;
             const phys_page = physmem.allocPage() orelse {
                 cleanup(process, program_pages + i);
                 return null;
             };
-            virtmem.mapPageInPD(stack_base + i * 4096, phys_page, virtmem.PAGE_PRESENT | virtmem.PAGE_RW | virtmem.PAGE_USER, new_pd);
+
+            out.print("Mapping stack page ");
+            out.printn(i);
+            out.print(" at virt=");
+            out.printHex(stack_page_addr);
+            out.print(" to phys=");
+            out.printHex(phys_page);
+            out.println("");
+
+            virtmem.mapPageInPD(stack_page_addr, phys_page, virtmem.PAGE_PRESENT | virtmem.PAGE_RW | virtmem.PAGE_USER, new_pd);
         }
 
+        // Allocate kernel stack
         const kernel_stack_phys = physmem.allocPage() orelse {
             cleanup(process, program_pages + stack_pages);
             return null;
@@ -134,8 +189,9 @@ pub const Process = struct {
             return null;
         };
 
+        // Set up process structure
         process.entry_point = user_base;
-        process.user_stack = USER_STACK_BASE;
+        process.user_stack = USER_STACK_BASE; // Top of stack
         process.stack_top = USER_STACK_BASE;
         process.state = ProcessState.Ready;
 
@@ -149,11 +205,39 @@ pub const Process = struct {
             .esp = @intCast(process.user_stack),
             .ebp = @intCast(process.user_stack),
             .eip = @intCast(process.entry_point),
-            .eflags = 0x202,
+            .eflags = 0x202, // IF flag set
             .cr3 = pd_phys,
         };
 
+        // Debug: verify all mappings
+        out.print("Verifying entry point mapping at ");
+        out.printHex(process.entry_point);
+        out.println("");
+
+        const entry_check = virtmem.translateInPD(process.entry_point, new_pd);
+        if (entry_check == null) {
+            out.println("ERROR: Entry point is not mapped!");
+        } else {
+            out.print("Entry point mapped to physical: ");
+            out.printHex(entry_check.?);
+            out.println("");
+        }
+
+        out.print("Verifying stack mapping at ");
+        out.printHex(process.user_stack);
+        out.println("");
+
+        const stack_check = virtmem.translateInPD(process.user_stack, new_pd);
+        if (stack_check == null) {
+            out.println("ERROR: Stack is not mapped!");
+        } else {
+            out.print("Stack mapped to physical: ");
+            out.printHex(stack_check.?);
+            out.println("");
+        }
+
         virtmem.unmapPhysicalPage(pd_virt);
+        out.restoreMode();
         return process;
     }
 
@@ -165,13 +249,38 @@ pub const Process = struct {
         }
 
         self.state = ProcessState.Running;
-        const entry_point = self.entry_point;
-        const user_stack = self.user_stack;
 
+        // Verify mappings before switch
+        const pd_virt = virtmem.mapPhysicalPage(self.page_directory) orelse unreachable;
+        const new_pd = @as(*[1024]u32, @ptrFromInt(pd_virt));
+
+        const entry_mapped = virtmem.translateInPD(self.entry_point, new_pd);
+        const stack_mapped = virtmem.translateInPD(self.user_stack, new_pd);
+
+        virtmem.unmapPhysicalPage(pd_virt);
+
+        if (entry_mapped == null) {
+            out.print("Error: Entry point not mapped in new page directory\n");
+            return;
+        }
+        if (stack_mapped == null) {
+            out.print("Error: User stack not mapped in new page directory\n");
+            return;
+        }
+
+        out.print("Switching to process - Entry: ");
+        out.printHex(self.entry_point);
+        out.print(", Stack: ");
+        out.printHex(self.user_stack);
+        out.println("");
+
+        // Now switch page directories and jump to user mode
         virtmem.loadPageDirectory(self.page_directory);
 
-        switchToUserMode(entry_point, user_stack, 0x23, // User data segment (GDT selector)
-            0x1B);
+        // Use correct GDT segment selectors (assuming standard setup)
+        // User code segment = 0x1B (GDT entry 3, RPL 3)
+        // User data segment = 0x23 (GDT entry 4, RPL 3)
+        switchToUserMode(self.entry_point, self.user_stack, 0x23, 0x1B);
     }
 
     pub fn destroy(self: *Process) void {
@@ -202,16 +311,12 @@ pub const Process = struct {
         return &self.context;
     }
 
-    fn cleanup(process: *Process, pages_allocated: usize) void {
+    fn cleanup(process: *Process, _: usize) void {
         @setRuntimeSafety(false);
 
         if (process.page_directory != 0) {
-            var i: usize = 0;
-            while (i < pages_allocated) : (i += 1) {
-                const phys = physmem.allocPage() orelse continue;
-                physmem.freePage(phys);
-            }
-
+            // Note: This cleanup is simplified - in a real system you'd need to
+            // walk the page directory and free all allocated pages
             physmem.freePage(process.page_directory);
         }
 
@@ -232,39 +337,19 @@ pub fn switchToUserMode(entry_point: u32, user_stack: u32, user_data_segment: u1
 
     out.preserveMode();
     out.switchToSerial();
-    // We're running some tests before switching to user mode
-    const mapped_stack = virtmem.translate(user_stack) orelse 0;
-    const mapped_entry = virtmem.translate(entry_point) orelse 0;
-
-    if (mapped_entry == 0) {
-        out.print("Error: Entry point not mapped in user space\n");
-    } else {
-        out.print("Entry point mapped at: ");
-        out.printHex(mapped_entry);
-        out.println("");
-    }
-
-    if (mapped_stack == 0) {
-        out.print("Error: User stack not mapped in user space\n");
-    } else {
-        out.print("User stack mapped at: ");
-        out.printHex(mapped_stack);
-        out.println("");
-    }
-
-    out.print("Entry Point: ");
+    out.print("Final switch - Entry: ");
     out.printHex(entry_point);
-    out.println("");
-    out.println("User Stack: ");
+    out.print(", Stack: ");
     out.printHex(user_stack);
-    out.println("");
-    out.println("User Data Segment: ");
+    out.print(", DS: ");
     out.printHex(user_data_segment);
-    out.println("");
-    out.println("User Code Segment: ");
+    out.print(", CS: ");
     out.printHex(user_code_segment);
     out.println("");
     out.restoreMode();
+
+    // Ensure we have a valid stack pointer (subtract 4 to account for stack alignment)
+    const aligned_stack = user_stack - 4;
 
     asm volatile (
         \\cli
@@ -274,19 +359,19 @@ pub fn switchToUserMode(entry_point: u32, user_stack: u32, user_data_segment: u1
         \\mov %%ax, %%fs
         \\mov %%ax, %%gs
         \\
-        \\push %[user_ss]          // User SS
-        \\push %[user_esp]         // User ESP
-        \\pushf                    // EFLAGS
+        \\push %[user_ss]          # User SS
+        \\push %[user_esp]         # User ESP
+        \\pushf                    # EFLAGS
         \\pop %%eax
-        \\or $0x200, %%eax        // Enable interrupts in user mode
-        \\push %%eax              // Modified EFLAGS
-        \\push %[user_cs]         // User CS
-        \\push %[user_eip]        // User EIP
-        \\iret                    // Switch to user mode
+        \\or $0x200, %%eax        # Enable interrupts in user mode
+        \\push %%eax              # Modified EFLAGS
+        \\push %[user_cs]         # User CS
+        \\push %[user_eip]        # User EIP
+        \\iret                    # Switch to user mode
         :
         : [user_ds] "r" (user_data_segment),
           [user_ss] "r" (user_data_segment),
-          [user_esp] "r" (user_stack),
+          [user_esp] "r" (aligned_stack),
           [user_cs] "r" (user_code_segment),
           [user_eip] "r" (entry_point),
         : "eax", "memory"

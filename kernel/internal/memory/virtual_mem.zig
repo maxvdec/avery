@@ -147,7 +147,10 @@ pub fn translate(virt: usize) ?usize {
 }
 
 pub fn loadPageDirectory(phys_addr: usize) void {
-    page_directory = @as(*[1024]u32, @ptrFromInt(phys_addr));
+    @setRuntimeSafety(false);
+    const pd_virt = mapPhysicalPage(phys_addr) orelse unreachable;
+    page_directory = @as(*[1024]u32, @ptrFromInt(pd_virt));
+
     asm volatile ("mov %[addr], %%cr3"
         :
         : [addr] "r" (phys_addr),
@@ -417,4 +420,25 @@ pub fn debugPageDirectory(pd_phys: u32, label: []const u8) void {
 
     unmapPhysicalPage(pd_virt);
     out.println("=== END DEBUG ===");
+}
+
+pub fn translateInPD(virt: usize, pd: *[1024]u32) ?usize {
+    @setRuntimeSafety(false);
+    const pd_index = (virt >> 22) & 0x3FF;
+    const pt_index = (virt >> 12) & 0x3FF;
+
+    if ((pd[pd_index] & PAGE_PRESENT) == 0) return null;
+
+    const pt_phys = pd[pd_index] & 0xFFFFF000;
+    const pt_virt = mapPhysicalPage(pt_phys) orelse return null;
+    const pt = @as(*[1024]u32, @ptrFromInt(pt_virt));
+
+    const result = if ((pt[pt_index] & PAGE_PRESENT) == 0) null else {
+        const phys_base = pt[pt_index] & 0xFFFFF000;
+        const offset = virt & 0xFFF;
+        return phys_base + offset;
+    };
+
+    unmapPhysicalPage(pt_virt);
+    return result;
 }
