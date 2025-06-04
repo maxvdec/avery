@@ -106,17 +106,14 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
 
     const hello_world_program = [_]u8{
-        // write(1, 0x400100, 14)
+        // write(1, current_addr + 20, 14)
         0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1         ; syscall: write
         0xBB, 0x01, 0x00, 0x00, 0x00, // mov ebx, 1         ; fd: stdout
-        0xB9, 0x00, 0x01, 0x40, 0x00, // mov ecx, 0x400100  ; message address
+        0xB9, 0x14, 0x00, 0x40, 0x00, // mov ecx, USER_SPACE_START + 20  ; message address
         0xBA, 0x0E, 0x00, 0x00, 0x00, // mov edx, 14        ; length
         0xCD, 0x80, // int 0x80           ; invoke syscall
-
-        // infinite loop
-        0xEB, 0xFE, // jmp $              ; jump to self
-
-        // Message at 0x400100
+        0xEB, 0xFE, // jmp $              ; infinite loop
+        // Message at offset 20
         'H',  'e',
         'l',  'l',
         'o',  ',',

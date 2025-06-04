@@ -16,6 +16,11 @@ pub var page_directory: *[1024]u32 = undefined;
 var next_free_virt: usize = 0x1000000;
 var next_user_virt: usize = USER_SPACE_START;
 
+pub const PageDirectory = struct {
+    physical: usize,
+    virtual: usize,
+};
+
 pub fn init() void {
     @setRuntimeSafety(false);
 
@@ -282,4 +287,75 @@ pub fn physicalToVirtual(phys: usize) ?usize {
     }
 
     return null;
+}
+
+pub fn mapPhysicalPage(phys_addr: usize) ?usize {
+    @setRuntimeSafety(false);
+
+    if (translate(phys_addr)) |existing_virt| {
+        return existing_virt;
+    }
+
+    const aligned_phys = phys_addr & 0xFFFFF000;
+    const offset = phys_addr & 0xFFF;
+
+    const temp_virt = allocVirtual(PAGE_SIZE, PAGE_PRESENT | PAGE_RW) orelse return null;
+
+    unmapPage(temp_virt);
+
+    mapPage(temp_virt, aligned_phys, PAGE_PRESENT | PAGE_RW);
+
+    return temp_virt + offset;
+}
+
+pub fn unmapPhysicalPage(virt_addr: usize) void {
+    @setRuntimeSafety(false);
+
+    if (translate(virt_addr)) |phys| {
+        if ((virt_addr & 0xFFFFF000) != (phys & 0xFFFFF000)) {
+            unmapPage(virt_addr & 0xFFFFF000);
+        }
+    }
+}
+
+pub fn mapPhysicalPageSimple(phys_addr: usize) usize {
+    @setRuntimeSafety(false);
+    return phys_addr;
+}
+
+pub fn copyUserMappingsToNewPD(virt_start: usize, size: usize, new_pd: *[1024]u32) void {
+    const pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+    var i: usize = 0;
+    while (i < pages) : (i += 1) {
+        const virt = virt_start + i * PAGE_SIZE;
+
+        const phys = translate(virt) orelse continue;
+
+        mapPageInPD(virt, phys, PAGE_PRESENT | PAGE_RW | PAGE_USER, new_pd);
+    }
+}
+
+pub fn mapPageInPD(virt: usize, phys: usize, flags: u32, target_pd: *[1024]u32) void {
+    @setRuntimeSafety(false);
+    const pd_index = (virt >> 22) & 0x3FF;
+    const pt_index = (virt >> 12) & 0x3FF;
+
+    var pt: *[1024]u32 = undefined;
+
+    if ((target_pd[pd_index] & PAGE_PRESENT) == 0) {
+        const new_pt_phys = pmm.allocPage() orelse unreachable;
+        target_pd[pd_index] = new_pt_phys | PAGE_PRESENT | PAGE_RW | PAGE_USER;
+
+        const pt_virt = mapPhysicalPage(new_pt_phys) orelse unreachable;
+        pt = @as(*[1024]u32, @ptrFromInt(pt_virt));
+
+        for (pt) |*e| e.* = 0;
+    } else {
+        const pt_phys = target_pd[pd_index] & 0xFFFFF000;
+        const pt_virt = mapPhysicalPage(pt_phys) orelse unreachable;
+        pt = @as(*[1024]u32, @ptrFromInt(pt_virt));
+    }
+
+    pt[pt_index] = (phys & 0xFFFFF000) | (flags & 0xFFF);
 }
