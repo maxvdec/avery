@@ -33,10 +33,10 @@ pub fn init() void {
     const pt = @as(*[1024]u32, @ptrFromInt(pt_physical));
 
     for (0..1024) |i| {
-        pt[i] = (i * PAGE_SIZE) | PAGE_PRESENT | PAGE_RW;
+        pt[i] = (i * PAGE_SIZE) | PAGE_PRESENT | PAGE_RW | PAGE_USER;
     }
 
-    page_directory[0] = pt_physical | PAGE_PRESENT | PAGE_RW;
+    page_directory[0] = pt_physical | PAGE_PRESENT | PAGE_RW | PAGE_USER;
 
     loadPageDirectory(pd_physical);
     enablePaging();
@@ -51,7 +51,7 @@ pub fn mapPage(virt: usize, phys: usize, flags: u32) void {
 
     if ((page_directory[pd_index] & PAGE_PRESENT) == 0) {
         const new_pt_phys = pmm.allocPage() orelse unreachable;
-        page_directory[pd_index] = new_pt_phys | PAGE_PRESENT | PAGE_RW;
+        page_directory[pd_index] = new_pt_phys | PAGE_PRESENT | PAGE_RW | PAGE_USER;
         pt = @as(*[1024]u32, @ptrFromInt(new_pt_phys));
         for (pt) |*e| e.* = 0;
     } else {
@@ -96,7 +96,7 @@ pub fn allocVirtual(size: usize, flags: u32) ?usize {
             }
             return null;
         };
-        mapPage(virt_addr + i * PAGE_SIZE, phys, flags | PAGE_PRESENT);
+        mapPage(virt_addr + i * PAGE_SIZE, phys, flags | PAGE_PRESENT | PAGE_USER);
     }
 
     next_free_virt += pages_needed * PAGE_SIZE;
@@ -147,6 +147,7 @@ pub fn translate(virt: usize) ?usize {
 }
 
 pub fn loadPageDirectory(phys_addr: usize) void {
+    page_directory = @as(*[1024]u32, @ptrFromInt(phys_addr));
     asm volatile ("mov %[addr], %%cr3"
         :
         : [addr] "r" (phys_addr),
@@ -299,11 +300,11 @@ pub fn mapPhysicalPage(phys_addr: usize) ?usize {
     const aligned_phys = phys_addr & 0xFFFFF000;
     const offset = phys_addr & 0xFFF;
 
-    const temp_virt = allocVirtual(PAGE_SIZE, PAGE_PRESENT | PAGE_RW) orelse return null;
+    const temp_virt = allocVirtual(PAGE_SIZE, PAGE_PRESENT | PAGE_RW | PAGE_USER) orelse return null;
 
     unmapPage(temp_virt);
 
-    mapPage(temp_virt, aligned_phys, PAGE_PRESENT | PAGE_RW);
+    mapPage(temp_virt, aligned_phys, PAGE_PRESENT | PAGE_RW | PAGE_USER);
 
     return temp_virt + offset;
 }
@@ -358,4 +359,62 @@ pub fn mapPageInPD(virt: usize, phys: usize, flags: u32, target_pd: *[1024]u32) 
     }
 
     pt[pt_index] = (phys & 0xFFFFF000) | (flags & 0xFFF);
+}
+
+pub fn debugPageDirectory(pd_phys: u32, label: []const u8) void {
+    @setRuntimeSafety(false);
+
+    out.print("=== DEBUG PAGE DIRECTORY: ");
+    out.print(label);
+    out.print(" ===\n");
+
+    out.print("Physical Address: ");
+    out.printHex(pd_phys);
+    out.print("\n");
+
+    const pd_virt = mapPhysicalPage(pd_phys) orelse {
+        out.print("ERROR: Cannot map page directory for debugging!");
+        return;
+    };
+
+    const pd = @as(*[1024]u32, @ptrFromInt(pd_virt));
+
+    var kernel_entries: u32 = 0;
+    out.print("Kernel mappings (768-1023):");
+    for (768..1024) |i| {
+        if (pd[i] != 0) {
+            out.print("  [");
+            out.printn(i);
+            out.print("] = 0x");
+            out.printHex(pd[i]);
+            out.print(" (present: ");
+            out.println(if ((pd[i] & 1) != 0) "true)" else "false)");
+            kernel_entries += 1;
+        }
+    }
+    out.print("Total kernel entries: ");
+    out.printn(kernel_entries);
+    out.print("\n");
+
+    var user_entries: u32 = 0;
+    out.print("User mappings (first 10 non-zero):");
+    var count: u32 = 0;
+    for (0..768) |i| {
+        if (pd[i] != 0 and count < 10) {
+            out.print("  [");
+            out.printn(i);
+            out.print("] = 0x");
+            out.printHex(pd[i]);
+            out.print(" (present: ");
+            out.println(if ((pd[i] & 1) != 0) "true)" else "false)");
+            count += 1;
+        }
+        if (pd[i] != 0) user_entries += 1;
+    }
+    out.print("Total user entries: ");
+    out.printn(user_entries);
+    out.println("");
+
+    unmapPhysicalPage(pd_virt);
+    out.println("=== END DEBUG ===");
 }

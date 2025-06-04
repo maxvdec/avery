@@ -87,9 +87,9 @@ export fn fault_handler(r: *regs) callconv(.C) noreturn {
         }
 
         if ((r.err_code & 0x2) == 0) {
-            out.print("* Write operation\n");
-        } else {
             out.print("* Read operation\n");
+        } else {
+            out.print("* Write operation\n");
         }
 
         if ((r.err_code & 0x4) == 0) {

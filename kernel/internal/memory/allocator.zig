@@ -244,6 +244,22 @@ pub fn free(ptr: [*]u8) void {
     coalesceBlocks(block);
 }
 
+pub fn freeObject(comptime T: type, obj: *T) void {
+    @setRuntimeSafety(false);
+    const block_addr = @intFromPtr(obj) - @sizeOf(BlockHeader);
+    const block = @as(*BlockHeader, @ptrCast(@alignCast(@as(*anyopaque, @ptrFromInt(block_addr)))));
+
+    if (block.is_free) {
+        return;
+    }
+
+    block.is_free = true;
+    used_blocks -= 1;
+    free_blocks += 1;
+
+    coalesceBlocks(block);
+}
+
 pub fn duplicate(comptime T: type, original: []const T) ?[*]T {
     @setRuntimeSafety(false);
     const size = @sizeOf(T) * original.len;
