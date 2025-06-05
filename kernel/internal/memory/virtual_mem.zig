@@ -1,7 +1,7 @@
 const mem = @import("memory");
 const pmm = @import("physical_mem");
 const out = @import("output");
-const PAGE_SIZE = 4096;
+pub const PAGE_SIZE = 4096;
 
 pub const PAGE_PRESENT = 1 << 0;
 pub const PAGE_RW = 1 << 1;
@@ -40,6 +40,19 @@ pub fn init() void {
 
     loadPageDirectory(pd_physical);
     enablePaging();
+}
+
+pub fn initPageDirectory(pd_phys: usize) ?PageDirectory {
+    @setRuntimeSafety(false);
+    const pd_virt = mapPhysicalPage(pd_phys) orelse return null;
+    page_directory = @as(*[1024]u32, @ptrFromInt(pd_virt));
+
+    for (page_directory) |*entry| entry.* = 0;
+
+    return PageDirectory{
+        .physical = pd_phys,
+        .virtual = pd_virt,
+    };
 }
 
 pub fn mapPage(virt: usize, phys: usize, flags: u32) void {
@@ -148,9 +161,6 @@ pub fn translate(virt: usize) ?usize {
 
 pub fn loadPageDirectory(phys_addr: usize) void {
     @setRuntimeSafety(false);
-    const pd_virt = mapPhysicalPage(phys_addr) orelse unreachable;
-    page_directory = @as(*[1024]u32, @ptrFromInt(pd_virt));
-
     asm volatile ("mov %[addr], %%cr3"
         :
         : [addr] "r" (phys_addr),
@@ -296,149 +306,34 @@ pub fn physicalToVirtual(phys: usize) ?usize {
 pub fn mapPhysicalPage(phys_addr: usize) ?usize {
     @setRuntimeSafety(false);
 
-    if (translate(phys_addr)) |existing_virt| {
-        return existing_virt;
-    }
-
     const aligned_phys = phys_addr & 0xFFFFF000;
     const offset = phys_addr & 0xFFF;
 
-    const temp_virt = allocVirtual(PAGE_SIZE, PAGE_PRESENT | PAGE_RW | PAGE_USER) orelse return null;
+    const temp_virt = next_free_virt;
 
-    unmapPage(temp_virt);
-
-    mapPage(temp_virt, aligned_phys, PAGE_PRESENT | PAGE_RW | PAGE_USER);
-
-    return temp_virt + offset;
-}
-
-pub fn unmapPhysicalPage(virt_addr: usize) void {
-    @setRuntimeSafety(false);
-
-    if (translate(virt_addr)) |phys| {
-        if ((virt_addr & 0xFFFFF000) != (phys & 0xFFFFF000)) {
-            unmapPage(virt_addr & 0xFFFFF000);
-        }
+    if (temp_virt + PAGE_SIZE >= KERNEL_MEM_BASE) {
+        out.print("Kernel virtual memory exhausted in mapPhysicalPage!\n");
+        return null;
     }
-}
 
-pub fn mapPhysicalPageSimple(phys_addr: usize) usize {
-    @setRuntimeSafety(false);
-    return phys_addr;
-}
-
-pub fn copyUserMappingsToNewPD(virt_start: usize, size: usize, new_pd: *[1024]u32) void {
-    const pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-
-    var i: usize = 0;
-    while (i < pages) : (i += 1) {
-        const virt = virt_start + i * PAGE_SIZE;
-
-        const phys = translate(virt) orelse continue;
-
-        mapPageInPD(virt, phys, PAGE_PRESENT | PAGE_RW | PAGE_USER, new_pd);
-    }
-}
-
-pub fn mapPageInPD(virt: usize, phys: usize, flags: u32, target_pd: *[1024]u32) void {
-    @setRuntimeSafety(false);
-    const pd_index = (virt >> 22) & 0x3FF;
-    const pt_index = (virt >> 12) & 0x3FF;
+    const pd_index = (temp_virt >> 22) & 0x3FF;
+    const pt_index = (temp_virt >> 12) & 0x3FF;
 
     var pt: *[1024]u32 = undefined;
-
-    if ((target_pd[pd_index] & PAGE_PRESENT) == 0) {
-        const new_pt_phys = pmm.allocPage() orelse unreachable;
-        target_pd[pd_index] = new_pt_phys | PAGE_PRESENT | PAGE_RW | PAGE_USER;
-
-        const pt_virt = mapPhysicalPage(new_pt_phys) orelse unreachable;
-        pt = @as(*[1024]u32, @ptrFromInt(pt_virt));
-
+    if ((page_directory[pd_index] & PAGE_PRESENT) == 0) {
+        const new_pt_phys = pmm.allocPage() orelse return null;
+        page_directory[pd_index] = new_pt_phys | PAGE_PRESENT | PAGE_RW;
+        pt = @as(*[1024]u32, @ptrFromInt(new_pt_phys));
         for (pt) |*e| e.* = 0;
     } else {
-        const pt_phys = target_pd[pd_index] & 0xFFFFF000;
-        const pt_virt = mapPhysicalPage(pt_phys) orelse unreachable;
-        pt = @as(*[1024]u32, @ptrFromInt(pt_virt));
+        const pt_phys = page_directory[pd_index] & 0xFFFFF000;
+        pt = @as(*[1024]u32, @ptrFromInt(pt_phys));
     }
 
-    pt[pt_index] = (phys & 0xFFFFF000) | (flags & 0xFFF);
-}
+    pt[pt_index] = aligned_phys | PAGE_PRESENT | PAGE_RW;
+    invlpg(temp_virt);
 
-pub fn debugPageDirectory(pd_phys: u32, label: []const u8) void {
-    @setRuntimeSafety(false);
+    next_free_virt += PAGE_SIZE;
 
-    out.print("=== DEBUG PAGE DIRECTORY: ");
-    out.print(label);
-    out.print(" ===\n");
-
-    out.print("Physical Address: ");
-    out.printHex(pd_phys);
-    out.print("\n");
-
-    const pd_virt = mapPhysicalPage(pd_phys) orelse {
-        out.print("ERROR: Cannot map page directory for debugging!");
-        return;
-    };
-
-    const pd = @as(*[1024]u32, @ptrFromInt(pd_virt));
-
-    var kernel_entries: u32 = 0;
-    out.print("Kernel mappings (768-1023):");
-    for (768..1024) |i| {
-        if (pd[i] != 0) {
-            out.print("  [");
-            out.printn(i);
-            out.print("] = 0x");
-            out.printHex(pd[i]);
-            out.print(" (present: ");
-            out.println(if ((pd[i] & 1) != 0) "true)" else "false)");
-            kernel_entries += 1;
-        }
-    }
-    out.print("Total kernel entries: ");
-    out.printn(kernel_entries);
-    out.print("\n");
-
-    var user_entries: u32 = 0;
-    out.print("User mappings (first 10 non-zero):");
-    var count: u32 = 0;
-    for (0..768) |i| {
-        if (pd[i] != 0 and count < 10) {
-            out.print("  [");
-            out.printn(i);
-            out.print("] = 0x");
-            out.printHex(pd[i]);
-            out.print(" (present: ");
-            out.println(if ((pd[i] & 1) != 0) "true)" else "false)");
-            count += 1;
-        }
-        if (pd[i] != 0) user_entries += 1;
-    }
-    out.print("Total user entries: ");
-    out.printn(user_entries);
-    out.println("");
-
-    unmapPhysicalPage(pd_virt);
-    out.println("=== END DEBUG ===");
-}
-
-pub fn translateInPD(virt: usize, pd: *[1024]u32) ?usize {
-    @setRuntimeSafety(false);
-    const pd_index = (virt >> 22) & 0x3FF;
-    const pt_index = (virt >> 12) & 0x3FF;
-
-    if ((pd[pd_index] & PAGE_PRESENT) == 0) return null;
-
-    const pt_phys = pd[pd_index] & 0xFFFFF000;
-    const pt_virt = mapPhysicalPage(pt_phys) orelse return null;
-    const pt = @as(*[1024]u32, @ptrFromInt(pt_virt));
-
-    const result = if ((pt[pt_index] & PAGE_PRESENT) == 0) null else {
-        const phys_base = pt[pt_index] & 0xFFFFF000;
-        const offset = virt & 0xFFF;
-        return phys_base + offset;
-    };
-
-    unmapPhysicalPage(pt_virt);
-    return result;
+    return temp_virt + offset;
 }

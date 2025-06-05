@@ -38,7 +38,7 @@ pub fn init() void {
     setGate(0, 0, 0, 0, 0);
     setGate(1, 0, 0xFFFFFFFF, 0x9A, 0xCF);
     setGate(2, 0, 0xFFFFFFFF, 0x92, 0xCF);
-    setGate(3, 0, 0xFFFFFFFF, 0x9A | 0x60, 0xCF); // User code, ring 3
-    setGate(4, 0, 0xFFFFFFFF, 0x92 | 0x60, 0xCF); // User data, ring 3
+    setGate(3, 0, 0xFFFFFFFF, 0xFA, 0xCF); // User code, ring 3
+    setGate(4, 0, 0xFFFFFFFF, 0xF2, 0xCF); // User data, ring 3
 
 }

@@ -105,7 +105,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     const fnt = font.Font.init();
     var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
 
-    const hello_world_program = [_]u8{
+    _ = [_]u8{
         // write(1, current_addr + 20, 14)
         0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1         ; syscall: write
         0xBB, 0x01, 0x00, 0x00, 0x00, // mov ebx, 1         ; fd: stdout
@@ -126,11 +126,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     // Initialize the terminal
     out.switchToGraphics(&fbTerminal);
 
-    const proc = process.Process.create(&hello_world_program) orelse {
-        out.println("Failed to create process for hello world program.");
-        sys.panic("Process creation failed.");
-    };
-    proc.switchTo();
+    process.processTest();
 
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");

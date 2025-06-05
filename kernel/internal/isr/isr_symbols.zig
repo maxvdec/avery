@@ -93,9 +93,9 @@ export fn fault_handler(r: *regs) callconv(.C) noreturn {
         }
 
         if ((r.err_code & 0x4) == 0) {
-            out.print("* User mode\n");
-        } else {
             out.print("* Kernel mode\n");
+        } else {
+            out.print("* User mode\n");
         }
     } else {
         out.print("======= Register Values. Triggered by exception ");

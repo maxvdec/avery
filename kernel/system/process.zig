@@ -1,400 +1,443 @@
-const virtmem = @import("virtual_mem");
-const physmem = @import("physical_mem");
-const alloc = @import("allocator");
-const mem = @import("memory");
+const vmm = @import("virtual_mem");
+const pmm = @import("physical_mem");
 const out = @import("output");
+const sys = @import("system");
+const mem = @import("memory");
+const alloc = @import("allocator");
 
-pub const ProcessState = enum {
-    Ready,
-    Running,
-    Blocked,
-    Terminated,
-};
+pub const ProcessState = enum { Running, Stopped, Waiting, Ready, Terminated };
 
-pub const ProcessContext = struct {
-    eax: u32,
-    ebx: u32,
-    ecx: u32,
-    edx: u32,
-    esi: u32,
-    edi: u32,
-    esp: u32,
-    ebp: u32,
-    eip: u32,
+pub const ProcessCPU = struct {
+    esp: usize,
+    eip: usize,
+    ebp: usize,
+    eax: usize,
+    ebx: usize,
+    ecx: usize,
+    edx: usize,
+    esi: usize,
+    edi: usize,
+    cs: u16,
+    ds: u16,
+    es: u16,
+    fs: u16,
+    gs: u16,
+    ss: u32,
     eflags: u32,
-    cr3: u32, // Page directory
-};
 
-extern fn memcpy(
-    dest: [*]u8,
-    src: [*]const u8,
-    len: usize,
-) [*]u8;
-
-pub const Process = struct {
-    pid: u32,
-    page_directory: u32,
-    user_stack: usize,
-    kernel_stack: usize,
-    state: ProcessState,
-    stack_top: usize,
-    entry_point: usize,
-    context: ProcessContext,
-
-    const STACK_SIZE = 0x2000; // 8KiB stack
-    const USER_STACK_BASE = 0x7FFFE000;
-
-    pub fn create(program_data: []const u8) ?*Process {
-        @setRuntimeSafety(false);
-        out.preserveMode();
-        out.switchToSerial();
-
-        const process = alloc.store(Process);
-        process.pid = getNextPid();
-
-        const pd_phys = physmem.allocPage() orelse {
-            return null;
-        };
-        process.page_directory = pd_phys;
-
-        const pd_virt = virtmem.mapPhysicalPage(pd_phys) orelse {
-            physmem.freePage(pd_phys);
-            return null;
-        };
-
-        const new_pd = @as(*[1024]u32, @ptrFromInt(pd_virt));
-
-        for (new_pd) |*entry| entry.* = 0;
-
-        const current_pd = virtmem.page_directory;
-
-        if (current_pd[0] != 0) {
-            new_pd[0] = current_pd[0];
-        }
-
-        var kernel_mappings_copied: u32 = 0;
-        for (768..1024) |i| {
-            new_pd[i] = current_pd[i];
-            if (current_pd[i] != 0) {
-                kernel_mappings_copied += 1;
-            }
-        }
-
-        for (512..768) |i| {
-            if (current_pd[i] != 0) {
-                new_pd[i] = current_pd[i];
-            }
-        }
-
-        const program_size = program_data.len;
-        const program_pages = (program_size + 0xFFF) / 0x1000;
-        const user_base = virtmem.USER_SPACE_START;
-
-        out.print("Creating process: program_size=");
-        out.printHex(program_size);
-        out.print(", program_pages=");
-        out.printn(program_pages);
-        out.print(", user_base=");
-        out.printHex(user_base);
-        out.println("");
-
-        var i: usize = 0;
-        while (i < program_pages) : (i += 1) {
-            const phys_page = physmem.allocPage() orelse {
-                cleanup(process, i);
-                return null;
-            };
-
-            const virt_addr = user_base + i * 4096;
-            virtmem.mapPageInPD(virt_addr, phys_page, virtmem.PAGE_PRESENT | virtmem.PAGE_RW | virtmem.PAGE_USER, new_pd);
-
-            out.print("Mapped program page ");
-            out.printn(i);
-            out.print(" at virt=");
-            out.printHex(virt_addr);
-            out.print(" to phys=");
-            out.printHex(phys_page);
-            out.println("");
-        }
-
-        var data_offset: usize = 0;
-        i = 0;
-        while (i < program_pages) : (i += 1) {
-            const virt_addr = user_base + i * 4096;
-            const phys_addr = virtmem.translateInPD(virt_addr, new_pd) orelse unreachable;
-
-            const temp_virt = virtmem.mapPhysicalPage(phys_addr) orelse unreachable;
-
-            const bytes_remaining = program_size - data_offset;
-            const bytes_to_copy = if (bytes_remaining > 4096) 4096 else bytes_remaining;
-
-            if (bytes_to_copy > 0) {
-                out.print("Copying ");
-                out.printn(bytes_to_copy);
-                out.print(" bytes to temp_virt=");
-                out.printHex(temp_virt);
-                out.print(" (phys=");
-                out.printHex(phys_addr);
-                out.print(") from offset ");
-                out.printn(data_offset);
-                out.println("");
-
-                _ = memcpy(@as([*]u8, @ptrFromInt(temp_virt)), program_data.ptr + data_offset, bytes_to_copy);
-                data_offset += bytes_to_copy;
-
-                const copied_data = @as([*]u8, @ptrFromInt(temp_virt));
-                out.print("First 4 bytes copied: ");
-                for (0..@min(4, bytes_to_copy)) |k| {
-                    out.printHex(copied_data[k]);
-                    out.print(" ");
-                }
-                out.println("");
-            }
-
-            if (bytes_to_copy < 4096) {
-                const clear_ptr = @as([*]u8, @ptrFromInt(temp_virt + bytes_to_copy));
-                for (0..(4096 - bytes_to_copy)) |j| {
-                    clear_ptr[j] = 0;
-                }
-            }
-
-            virtmem.unmapPhysicalPage(temp_virt);
-        }
-
-        const stack_pages = STACK_SIZE / 4096;
-        const stack_bottom = USER_STACK_BASE - STACK_SIZE + 4096;
-
-        out.print("Creating stack: USER_STACK_BASE=");
-        out.printHex(USER_STACK_BASE);
-        out.print(", STACK_SIZE=");
-        out.printHex(STACK_SIZE);
-        out.print(", stack_bottom=");
-        out.printHex(stack_bottom);
-        out.print(", stack_pages=");
-        out.printn(stack_pages);
-        out.println("");
-
-        i = 0;
-        while (i < stack_pages) : (i += 1) {
-            const stack_page_addr = stack_bottom + i * 4096;
-            const phys_page = physmem.allocPage() orelse {
-                cleanup(process, program_pages + i);
-                return null;
-            };
-
-            out.print("Mapping stack page ");
-            out.printn(i);
-            out.print(" at virt=");
-            out.printHex(stack_page_addr);
-            out.print(" to phys=");
-            out.printHex(phys_page);
-            out.println("");
-
-            virtmem.mapPageInPD(stack_page_addr, phys_page, virtmem.PAGE_PRESENT | virtmem.PAGE_RW | virtmem.PAGE_USER, new_pd);
-
-            const temp_stack_virt = virtmem.mapPhysicalPage(phys_page) orelse unreachable;
-            const stack_ptr = @as([*]u8, @ptrFromInt(temp_stack_virt));
-            for (0..4096) |j| {
-                stack_ptr[j] = 0;
-            }
-            virtmem.unmapPhysicalPage(temp_stack_virt);
-        }
-
-        const kernel_stack_phys = physmem.allocPage() orelse {
-            cleanup(process, program_pages + stack_pages);
-            return null;
-        };
-
-        process.kernel_stack = virtmem.mapPhysicalPage(kernel_stack_phys) orelse {
-            physmem.freePage(kernel_stack_phys);
-            cleanup(process, program_pages + stack_pages);
-            return null;
-        };
-
-        process.entry_point = user_base;
-        process.user_stack = USER_STACK_BASE;
-        process.stack_top = USER_STACK_BASE;
-        process.state = ProcessState.Ready;
-
-        process.context = ProcessContext{
+    pub fn init() ProcessCPU {
+        return ProcessCPU{
+            .esp = 0,
+            .eip = 0,
+            .ebp = 0,
             .eax = 0,
             .ebx = 0,
             .ecx = 0,
             .edx = 0,
             .esi = 0,
             .edi = 0,
-            .esp = @intCast(process.user_stack),
-            .ebp = @intCast(process.user_stack),
-            .eip = @intCast(process.entry_point),
-            .eflags = 0x202,
-            .cr3 = pd_phys,
+            .cs = 0x08, // User code segment
+            .ds = 0x10, // User data segment
+            .es = 0x10,
+            .fs = 0x10,
+            .gs = 0x10,
+            .ss = 0x10, // User stack segment
+            .eflags = 0x202, // Interrupts enabled
         };
-
-        out.print("Verifying entry point mapping at ");
-        out.printHex(process.entry_point);
-        out.println("");
-
-        const entry_check = virtmem.translateInPD(process.entry_point, new_pd);
-        if (entry_check == null) {
-            out.println("ERROR: Entry point is not mapped!");
-        } else {
-            out.print("Entry point mapped to physical: ");
-            out.printHex(entry_check.?);
-            out.println("");
-        }
-
-        out.print("Verifying stack mapping at ");
-        out.printHex(process.user_stack);
-        out.println("");
-
-        const stack_check = virtmem.translateInPD(process.user_stack, new_pd);
-        if (stack_check == null) {
-            out.println("ERROR: Stack is not mapped!");
-        } else {
-            out.print("Stack mapped to physical: ");
-            out.printHex(stack_check.?);
-            out.println("");
-        }
-
-        virtmem.unmapPhysicalPage(pd_virt);
-        out.restoreMode();
-        return process;
-    }
-
-    pub fn switchTo(self: *Process) void {
-        @setRuntimeSafety(false);
-
-        if (self.state != ProcessState.Ready) {
-            out.print("Warning: Switching to process in state other than Ready\n");
-        }
-
-        self.state = ProcessState.Running;
-
-        const pd_virt = virtmem.mapPhysicalPage(self.page_directory) orelse unreachable;
-        const new_pd = @as(*[1024]u32, @ptrFromInt(pd_virt));
-
-        const entry_mapped = virtmem.translateInPD(self.entry_point, new_pd);
-        const stack_mapped = virtmem.translateInPD(self.user_stack, new_pd);
-
-        virtmem.unmapPhysicalPage(pd_virt);
-
-        if (entry_mapped == null) {
-            out.print("Error: Entry point not mapped in new page directory\n");
-            return;
-        }
-        if (stack_mapped == null) {
-            out.print("Error: User stack not mapped in new page directory\n");
-            return;
-        }
-
-        out.print("Switching to process - Entry: ");
-        out.printHex(self.entry_point);
-        out.print(", Stack: ");
-        out.printHex(self.user_stack);
-        out.println("");
-
-        virtmem.loadPageDirectory(self.page_directory);
-
-        switchToUserMode(self.entry_point, self.user_stack, 0x23, 0x1B);
-    }
-
-    pub fn destroy(self: *Process) void {
-        @setRuntimeSafety(false);
-
-        self.state = ProcessState.Terminated;
-
-        if (self.kernel_stack != 0) {
-            const kernel_stack_phys = virtmem.translate(self.kernel_stack) orelse 0;
-            if (kernel_stack_phys != 0) {
-                physmem.freePage(kernel_stack_phys);
-            }
-        }
-
-        if (self.page_directory != 0) {
-            physmem.freePage(self.page_directory);
-        }
-
-        alloc.freeObject(Process, self);
-    }
-
-    pub fn saveContext(self: *Process, context: *const ProcessContext) void {
-        self.context = context.*;
-        self.state = ProcessState.Ready;
-    }
-
-    pub fn getContext(self: *const Process) *const ProcessContext {
-        return &self.context;
-    }
-
-    fn cleanup(process: *Process, _: usize) void {
-        @setRuntimeSafety(false);
-
-        if (process.page_directory != 0) {
-            physmem.freePage(process.page_directory);
-        }
-
-        alloc.freeObject(Process, process);
-    }
-
-    fn getCurrentPageDirectory() u32 {
-        var cr3: u32 = undefined;
-        asm volatile ("mov %%cr3, %[out]"
-            : [out] "=r" (cr3),
-        );
-        return cr3;
     }
 };
 
-pub fn switchToUserMode(entry_point: u32, user_stack: u32, user_data_segment: u16, user_code_segment: u16) void {
+const USER_STACK_SIZE = 0x10000; // 64 KiB
+const KERNEL_STACK_SIZE = 0x4000; // 16 KiB
+const USER_STACK_TOP = 0x7FFF_FFFF; // Top of user stack (4 GiB - 1)
+const USER_CODE_BASE = 0x400000; // 4 MiB - standard user code base
+
+// Process table management
+const MAX_PROCESSES = 256;
+var process_table: [MAX_PROCESSES]?*Process = [_]?*Process{null} ** MAX_PROCESSES;
+var next_pid: u32 = 1;
+var current_process: ?*Process = null;
+
+extern fn memset(
+    dest: [*]u8,
+    value: u8,
+    len: usize,
+) [*]u8;
+
+pub const Process = struct {
+    id: u32,
+    name: []const u8,
+    state: ProcessState,
+    page_dir: vmm.PageDirectory = undefined,
+    cpu: ProcessCPU = undefined,
+    kernel_stack: u32 = 0,
+    user_stack: u32 = 0,
+    code_base: u32 = 0,
+    code_size: u32 = 0,
+    data_base: u32 = 0,
+    data_size: u32 = 0,
+    parent_id: u32 = 0,
+
+    pub fn init(id: u32, name: []const u8) Process {
+        return Process{
+            .id = id,
+            .name = name,
+            .state = ProcessState.Ready,
+            .cpu = ProcessCPU.init(),
+        };
+    }
+
+    pub fn setupMemory(self: *Process) bool {
+        @setRuntimeSafety(false);
+
+        const pd_phys = pmm.allocPage() orelse {
+            out.print("Failed to allocate page directory for process ");
+            out.printn(self.id);
+            out.println("");
+            return false;
+        };
+
+        // Initialize page directory
+        self.page_dir = vmm.initPageDirectory(pd_phys) orelse {
+            pmm.freePage(pd_phys);
+            out.print("Failed to initialize page directory for process ");
+            out.printn(self.id);
+            out.println("");
+            return false;
+        };
+        // Switch to process page directory temporarily
+        const old_pd = vmm.page_directory;
+        vmm.loadPageDirectory(self.page_dir.virtual);
+
+        // Map kernel space (higher half)
+        if (!self.mapKernelSpace()) {
+            vmm.page_directory = old_pd;
+            pmm.freePage(pd_phys);
+            return false;
+        }
+
+        // Allocate kernel stack
+        self.kernel_stack = vmm.allocVirtual(KERNEL_STACK_SIZE, vmm.PAGE_PRESENT | vmm.PAGE_RW) orelse {
+            vmm.page_directory = old_pd;
+            pmm.freePage(pd_phys);
+            out.print("Failed to allocate kernel stack for process ");
+            out.printn(self.id);
+            out.println("");
+            return false;
+        };
+
+        // Allocate user stack
+        self.user_stack = vmm.allocUserPages(USER_STACK_SIZE) orelse {
+            vmm.freeVirtual(self.kernel_stack, KERNEL_STACK_SIZE);
+            vmm.page_directory = old_pd;
+            pmm.freePage(pd_phys);
+            out.print("Failed to allocate user stack for process ");
+            out.printn(self.id);
+            out.println("");
+            return false;
+        };
+
+        // Set up CPU state
+        self.cpu.esp = USER_STACK_TOP - 4; // Leave some space at top
+        self.cpu.ebp = USER_STACK_TOP - 4;
+
+        // Restore original page directory
+        vmm.page_directory = old_pd;
+        return true;
+    }
+
+    fn mapKernelSpace(_: *Process) bool {
+        // Map the first 4MB of physical memory to kernel space
+        // This ensures kernel code and data are accessible
+        var addr: usize = 0;
+        while (addr < 0x400000) : (addr += vmm.PAGE_SIZE) {
+            vmm.mapPage(vmm.KERNEL_MEM_BASE + addr, addr, vmm.PAGE_PRESENT | vmm.PAGE_RW);
+        }
+        return true;
+    }
+
+    pub fn loadProgram(self: *Process, code: []const u8) bool {
+        @setRuntimeSafety(false);
+
+        if (code.len == 0) {
+            out.print("Empty program code for process ");
+            out.printn(self.id);
+            out.println("");
+            return false;
+        }
+
+        // Calculate pages needed for code
+        const pages_needed = (code.len + vmm.PAGE_SIZE - 1) / vmm.PAGE_SIZE;
+        self.code_size = @intCast(code.len);
+
+        // Switch to process page directory
+        const old_pd = vmm.page_directory;
+        vmm.loadPageDirectory(self.page_dir.physical);
+
+        // Allocate virtual memory for code
+        self.code_base = vmm.allocUserPages(pages_needed * vmm.PAGE_SIZE) orelse {
+            vmm.page_directory = old_pd;
+            out.print("Failed to allocate code memory for process ");
+            out.printn(self.id);
+            out.println("");
+            return false;
+        };
+
+        // Copy code to allocated memory
+        const code_ptr = @as([*]u8, @ptrFromInt(self.code_base));
+        for (code, 0..) |byte, i| {
+            code_ptr[i] = byte;
+        }
+
+        // Set entry point
+        self.cpu.eip = self.code_base;
+
+        // Restore original page directory
+        vmm.page_directory = old_pd;
+
+        out.print("Loaded program for process ");
+        out.printn(self.id);
+        out.print(" at 0x");
+        out.printHex(self.code_base);
+        out.println("");
+        return true;
+    }
+
+    pub fn cleanup(self: *Process) void {
+        @setRuntimeSafety(false);
+
+        // Switch to process page directory to clean up
+        const old_pd = vmm.page_directory;
+        vmm.loadPageDirectory(self.page_dir.physical);
+
+        // Free user stack
+        if (self.user_stack != 0) {
+            vmm.freeUserPages(self.user_stack, USER_STACK_SIZE);
+        }
+
+        // Free code memory
+        if (self.code_base != 0) {
+            const pages_needed = (self.code_size + vmm.PAGE_SIZE - 1) / vmm.PAGE_SIZE;
+            vmm.freeUserPages(self.code_base, pages_needed * vmm.PAGE_SIZE);
+        }
+
+        // Free data memory if allocated
+        if (self.data_base != 0) {
+            const pages_needed = (self.data_size + vmm.PAGE_SIZE - 1) / vmm.PAGE_SIZE;
+            vmm.freeUserPages(self.data_base, pages_needed * vmm.PAGE_SIZE);
+        }
+
+        // Restore original page directory
+        vmm.page_directory = old_pd;
+
+        // Free kernel stack
+        if (self.kernel_stack != 0) {
+            vmm.freeVirtual(self.kernel_stack, KERNEL_STACK_SIZE);
+        }
+
+        // Free page directory
+        pmm.freePage(self.page_dir.physical);
+
+        self.state = ProcessState.Terminated;
+    }
+
+    pub fn program(self: *Process, code: []const u8) void {
+        if (!self.setupMemory()) {
+            out.print("Failed to setup memory for process ");
+            out.printn(self.id);
+            out.println("");
+            self.state = ProcessState.Terminated;
+            return;
+        }
+
+        if (!self.loadProgram(code)) {
+            out.print("Failed to load program for process ");
+            out.printn(self.id);
+            out.println("");
+            self.cleanup();
+            return;
+        }
+
+        self.state = ProcessState.Ready;
+        out.print("Process ");
+        out.printn(self.id);
+        out.print(" '");
+        out.print(self.name);
+        out.println("' ready to run");
+    }
+};
+
+// Process management functions
+pub fn createProcess(name: []const u8) ?*Process {
     @setRuntimeSafety(false);
 
-    out.preserveMode();
-    out.switchToSerial();
-    out.print("Final switch - Entry: ");
-    out.printHex(entry_point);
-    out.print(", Stack: ");
-    out.printHex(user_stack);
-    out.print(", DS: ");
-    out.printHex(user_data_segment);
-    out.print(", CS: ");
-    out.printHex(user_code_segment);
-    out.println("");
-    out.restoreMode();
+    // Find free slot in process table
+    var slot_index: usize = 0;
+    while (slot_index < MAX_PROCESSES) : (slot_index += 1) {
+        if (process_table[slot_index] == null) break;
+    } else {
+        out.println("Process table full!");
+        return null;
+    }
 
-    // Ensure we have a valid stack pointer (subtract 4 to account for stack alignment)
-    const aligned_stack = user_stack - 4;
+    // Allocate memory for process
+    const process_ptr = alloc.store(Process);
 
-    asm volatile (
-        \\cli
-        \\mov %[user_ds], %%ax
-        \\mov %%ax, %%ds
-        \\mov %%ax, %%es
-        \\mov %%ax, %%fs
-        \\mov %%ax, %%gs
-        \\
-        \\push %[user_ss]          # User SS
-        \\push %[user_esp]         # User ESP
-        \\pushf                    # EFLAGS
-        \\pop %%eax
-        \\or $0x200, %%eax        # Enable interrupts in user mode
-        \\push %%eax              # Modified EFLAGS
-        \\push %[user_cs]         # User CS
-        \\push %[user_eip]        # User EIP
-        \\iret                    # Switch to user mode
-        :
-        : [user_ds] "r" (user_data_segment),
-          [user_ss] "r" (user_data_segment),
-          [user_esp] "r" (aligned_stack),
-          [user_cs] "r" (user_code_segment),
-          [user_eip] "r" (entry_point),
-        : "eax", "memory"
-    );
+    // Initialize process
+    process_ptr.* = Process.init(next_pid, name);
+    process_table[slot_index] = process_ptr;
+    next_pid += 1;
+
+    out.print("Created process ");
+    out.printn(process_ptr.id);
+    out.print(" '");
+    out.print(name);
+    out.println("'");
+    return process_ptr;
 }
 
-var next_pid: u32 = 1;
-pub fn getNextPid() u32 {
+pub fn destroyProcess(process: *Process) void {
     @setRuntimeSafety(false);
-    const pid = next_pid;
-    next_pid += 1;
-    return pid;
+
+    // Find process in table
+    for (process_table, 0..) |proc, i| {
+        if (proc) |p| {
+            if (p.id == process.id) {
+                // Clean up process resources
+                process.cleanup();
+
+                // Remove from table
+                process_table[i] = null;
+
+                // Free process memory
+                alloc.free(process);
+
+                out.print("Destroyed process ");
+                out.printn(process.id);
+                out.println("");
+                return;
+            }
+        }
+    }
+}
+
+pub fn findProcess(pid: u32) ?*Process {
+    for (process_table) |proc| {
+        if (proc) |p| {
+            if (p.id == pid) return p;
+        }
+    }
+    return null;
+}
+
+pub fn scheduleNext() ?*Process {
+    // Simple round-robin scheduler
+    var start_index: usize = 0;
+
+    // Find current process index
+    if (current_process) |curr| {
+        for (process_table, 0..) |proc, i| {
+            if (proc) |p| {
+                if (p.id == curr.id) {
+                    start_index = (i + 1) % MAX_PROCESSES;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Find next ready process
+    var index = start_index;
+    var count: usize = 0;
+    while (count < MAX_PROCESSES) : (count += 1) {
+        if (process_table[index]) |proc| {
+            if (proc.state == ProcessState.Ready) {
+                return proc;
+            }
+        }
+        index = (index + 1) % MAX_PROCESSES;
+    }
+
+    return null;
+}
+
+pub fn switchProcess(new_process: *Process) void {
+    @setRuntimeSafety(false);
+
+    // Save current process state if any
+    if (current_process) |curr| {
+        if (curr.state == ProcessState.Running) {
+            curr.state = ProcessState.Ready;
+        }
+        // CPU state would be saved by interrupt handler
+    }
+
+    // Switch to new process
+    current_process = new_process;
+    new_process.state = ProcessState.Running;
+
+    // Load new page directory
+    vmm.loadPageDirectory(new_process.page_dir.physical);
+
+    out.print("Switched to process ");
+    out.printn(new_process.id);
+    out.print(" '");
+    out.print(new_process.name);
+    out.println("'");
+}
+
+pub fn getCurrentProcess() ?*Process {
+    return current_process;
+}
+
+pub fn listProcesses() void {
+    out.println("Process List:");
+    out.println("PID  Name           State");
+    out.println("---  ----           -----");
+
+    for (process_table) |proc| {
+        if (proc) |p| {
+            const state_str = switch (p.state) {
+                ProcessState.Running => "Running",
+                ProcessState.Ready => "Ready",
+                ProcessState.Waiting => "Waiting",
+                ProcessState.Stopped => "Stopped",
+                ProcessState.Terminated => "Terminated",
+            };
+            out.printn(p.id);
+            out.print("  ");
+            out.print(p.name);
+            out.print("           ");
+            out.println(state_str);
+        }
+    }
+}
+
+pub fn initProcessManager() void {
+    // Initialize process table
+    for (process_table, 0..) |_, i| {
+        process_table[i] = null;
+    }
+
+    next_pid = 1;
+    current_process = null;
+
+    out.println("Process manager initialized");
+}
+
+pub fn processTest() void {
+    @setRuntimeSafety(false);
+
+    // Initialize process manager
+    initProcessManager();
+
+    // Create test process
+    const process = createProcess("TestProcess") orelse {
+        out.println("Failed to create test process");
+        return;
+    };
+
+    // Simple test program - infinite loop (JMP $)
+    const code: [2]u8 = [_]u8{ 0xEB, 0xFE };
+    process.program(&code);
 }
