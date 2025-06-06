@@ -95,7 +95,6 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     virtmem.init();
 
     out.println("Virtual memory initialized.");
-
     // Get some utilities for the kernel
     _ = alloc.initHeap();
     _ = fusion.getAtaController();
