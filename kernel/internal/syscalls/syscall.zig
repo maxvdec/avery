@@ -3,7 +3,7 @@ const idt = @import("idt");
 extern fn int80_handler() void;
 
 pub fn initSyscall() void {
-    idt.setGate(0x80, @as(u64, @intCast(@intFromPtr(&int80_handler))), KERNEL_CS, INTERRUPT_GATE_FLAGS);
+    idt.setGate(0x80, @as(u64, @intCast(@intFromPtr(&int80_handler))), KERNEL_CS, 0xEE);
 }
 
 const KERNEL_CS: u16 = 0x08;

@@ -275,6 +275,19 @@ pub fn duplicate(comptime T: type, original: []const T) ?[*]T {
     return dest;
 }
 
+pub fn duplicateObject(comptime T: type, original: T) ?*T {
+    @setRuntimeSafety(false);
+    const size = @sizeOf(T);
+    const ptr = request(size) orelse {
+        sys.panic("Failed to allocate memory for object duplicate");
+    };
+
+    const dest: *T = @alignCast(@ptrCast(ptr));
+    dest.* = original;
+
+    return dest;
+}
+
 pub fn debugHeap() void {
     @setRuntimeSafety(false);
     out.println("=== Heap Memory ===");

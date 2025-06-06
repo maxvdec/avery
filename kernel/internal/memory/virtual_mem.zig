@@ -276,16 +276,20 @@ pub fn createUserPageDirectory() ?PageDirectory {
     @setRuntimeSafety(false);
 
     const pd_physical = pmm.allocPage() orelse return null;
-
     const pd_virtual = pd_physical + KERNEL_MEM_BASE;
-
     const page_dir: *[1024]u32 = @as(*[1024]u32, @ptrFromInt(pd_virtual));
 
     for (page_dir) |*entry| entry.* = 0;
 
-    for (768..1024) |i| {
-        page_dir[i] = page_directory[i];
+    for (0..1024) |i| {
+        if ((page_directory[i] & PAGE_PRESENT) != 0) {
+            if ((page_directory[i] & PAGE_USER) == 0) {
+                page_dir[i] = page_directory[i];
+            }
+        }
     }
+
+    page_dir[0] = page_directory[0] | PAGE_PRESENT | PAGE_RW | PAGE_USER;
 
     return PageDirectory{
         .physical = pd_physical,
@@ -313,4 +317,98 @@ pub fn mapUserPage(pd: PageDirectory, virt: usize, phys: usize, flags: u32) void
 
     pt[pt_index] = (phys & 0xFFFFF000) | (flags & 0xFFF);
     invlpg(virt);
+}
+
+pub fn tempMap(phys: usize) usize {
+    @setRuntimeSafety(false);
+
+    const temp_virt_base: usize = 0x0FF00000;
+    const pd_index = getPageDirectoryIndex(temp_virt_base);
+    const pt_index = getPageTableIndex(temp_virt_base);
+
+    var pt: *[1024]u32 = undefined;
+
+    if ((page_directory[pd_index] & PAGE_PRESENT) == 0) {
+        const new_pt_phys = pmm.allocPage() orelse unreachable;
+        page_directory[pd_index] = new_pt_phys | PAGE_PRESENT | PAGE_RW;
+
+        const pt_virt = new_pt_phys + KERNEL_MEM_BASE;
+        pt = @as(*[1024]u32, @ptrFromInt(pt_virt));
+        for (pt) |*e| e.* = 0;
+    } else {
+        const pt_phys = page_directory[pd_index] & 0xFFFFF000;
+        pt = @as(*[1024]u32, @ptrFromInt(pt_phys + KERNEL_MEM_BASE));
+    }
+
+    pt[pt_index] = (phys & 0xFFFFF000) | PAGE_PRESENT | PAGE_RW;
+    invlpg(temp_virt_base);
+
+    return temp_virt_base + (phys & 0xFFF);
+}
+
+pub fn tempUnmap(virt: usize) void {
+    @setRuntimeSafety(false);
+
+    const pd_index = getPageDirectoryIndex(virt);
+    const pt_index = getPageTableIndex(virt);
+
+    if ((page_directory[pd_index] & PAGE_PRESENT) == 0) return;
+
+    const pt_phys = page_directory[pd_index] & 0xFFFFF000;
+    const pt = @as(*[1024]u32, @ptrFromInt(pt_phys + KERNEL_MEM_BASE));
+
+    pt[pt_index] = 0;
+    invlpg(virt);
+}
+
+pub fn debugPageDirectory(pd: PageDirectory) void {
+    out.println("=== Page Directory Debug ===");
+    out.print("Physical: ");
+    out.printHex(pd.physical);
+    out.println("");
+
+    const page_dir = @as(*[1024]u32, @ptrFromInt(pd.virtual));
+
+    var mapped_count: u32 = 0;
+    for (0..1024) |i| {
+        if ((page_dir[i] & PAGE_PRESENT) != 0) {
+            mapped_count += 1;
+            if (i < 10 or i >= 768) {
+                out.print("Entry ");
+                out.printn(@as(u32, @intCast(i)));
+                out.print(": ");
+                out.printHex(page_dir[i]);
+                out.println("");
+            }
+        }
+    }
+
+    out.print("Total mapped entries: ");
+    out.printn(mapped_count);
+    out.println("");
+
+    const current_eip = @returnAddress();
+    const eip_pd_index = (current_eip >> 22) & 0x3FF;
+    out.print("Current EIP PD index: ");
+    out.printn(@as(u32, @intCast(eip_pd_index)));
+    out.print(" - Mapped: ");
+    if ((page_dir[eip_pd_index] & PAGE_PRESENT) != 0) {
+        out.println("YES");
+    } else {
+        out.println("NO - THIS IS THE PROBLEM!");
+    }
+}
+
+pub fn copyAllMappings(dest_pd: PageDirectory) void {
+    @setRuntimeSafety(false);
+
+    const dest_page_dir = @as(*[1024]u32, @ptrFromInt(dest_pd.virtual));
+
+    for (0..1024) |i| {
+        if ((page_directory[i] & PAGE_PRESENT) != 0) {
+            dest_page_dir[i] = page_directory[i];
+        } else {
+            dest_page_dir[i] = 0;
+        }
+    }
 }
