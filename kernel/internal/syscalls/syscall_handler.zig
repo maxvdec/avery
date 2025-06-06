@@ -10,6 +10,8 @@ extern fn kern_writePath(buf: [*]const u8, len: usize, directory: [*]const u8, d
 extern fn kern_read(buf: [*]const u8, len: usize, directory: [*]const u8, directoryLen: usize, partitionNumber: u32) u32;
 extern fn kern_readStdin(buf: [*]u8, len: usize) u32;
 
+const FRAMEBUFFER_TERM: usize = 0xC1000010;
+
 const FileDescriptor = struct {
     fd: u32 = 0,
     flags: u32 = 0,
@@ -39,6 +41,8 @@ export fn syscall_handler(
     arg5: u32,
 ) u64 {
     @setRuntimeSafety(false);
+    const fbTerminal = @as(*terminal.FramebufferTerminal, @ptrFromInt(FRAMEBUFFER_TERM));
+    fbTerminal.putString("Hello, World!\n");
     switch (syscall_number) {
         0 => return read(arg1, arg2, arg3, arg4, arg5),
         1 => return write(arg1, arg2, arg3, arg4, arg5),

@@ -102,7 +102,8 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     // Obtain the framebuffer and font
     const fb = framebuffer.Framebuffer.init(fbTag);
     const fnt = font.Font.init();
-    var fbTerminal = terminal.FramebufferTerminal.init(&fb, &fnt);
+    var fbTerminal = alloc.store(terminal.FramebufferTerminal);
+    fbTerminal.* = terminal.FramebufferTerminal.init(&fb, &fnt);
 
     const proc_code = [_]u8{
         // write(1, current_addr + 20, 14)
@@ -123,7 +124,8 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     };
 
     // Initialize the terminal
-    out.switchToGraphics(&fbTerminal);
+    out.switchToGraphics(fbTerminal);
+    out.printHex(virtmem.physicalToVirtual(@intFromPtr(fbTerminal)).?);
 
     const proc = process.Process.create_process(&proc_code) orelse {
         out.println("Failed to create process.");
