@@ -4,6 +4,7 @@ const output = @import("system");
 const serial = @import("serial");
 const terminal = @import("terminal");
 const mem = @import("memory");
+const kalloc = @import("kern_allocator");
 
 pub const VgaTextColor = vgaTxt.VgaTextColor;
 
@@ -73,7 +74,8 @@ pub fn switchToVga() void {
 pub fn switchToGraphics(fbTerminal: *terminal.FramebufferTerminal) void {
     @setRuntimeSafety(false);
     mode = OutputMode.Graphics;
-    term = fbTerminal;
+    term = kalloc.storeKernel(terminal.FramebufferTerminal);
+    term.* = fbTerminal.*;
 }
 
 pub fn initOutputs() void {

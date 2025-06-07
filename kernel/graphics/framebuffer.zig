@@ -70,7 +70,7 @@ pub const Framebuffer = struct {
 
         const virtFramebufferAddr = virtmem.mapKernelMemory(@as(usize, @intCast(framebufferTag.addr)), framebufferSize);
 
-        const backbufferVirtAddr = virtmem.allocVirtual(framebufferSize, virtmem.PAGE_PRESENT | virtmem.PAGE_RW) orelse {
+        const backbufferVirtAddr = virtmem.allocKernelVirtual(framebufferSize, virtmem.PAGE_PRESENT | virtmem.PAGE_RW) orelse {
             sys.panic("Failed to allocate virtual memory for framebuffer backbuffer");
         };
 

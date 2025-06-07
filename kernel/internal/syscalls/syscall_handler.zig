@@ -4,13 +4,12 @@ const vfs = @import("vfs");
 const ata = @import("ata");
 const terminal = @import("terminal");
 const mem = @import("memory");
+const ext = @import("extensions");
 
 extern fn kern_print(ptr: [*]const u8, len: usize) void;
 extern fn kern_writePath(buf: [*]const u8, len: usize, directory: [*]const u8, directoryLen: usize, partitionNumber: u32) u32;
 extern fn kern_read(buf: [*]const u8, len: usize, directory: [*]const u8, directoryLen: usize, partitionNumber: u32) u32;
 extern fn kern_readStdin(buf: [*]u8, len: usize) u32;
-
-const FRAMEBUFFER_TERM: usize = 0xC1000010;
 
 const FileDescriptor = struct {
     fd: u32 = 0,
@@ -32,6 +31,8 @@ const SUCCESS: u64 = 0;
 
 var file_descriptors: [512]FileDescriptor = [_]FileDescriptor{.{}} ** 512;
 
+extern var kernel_extensions: u32;
+
 export fn syscall_handler(
     syscall_number: u32,
     arg1: u32,
@@ -41,8 +42,11 @@ export fn syscall_handler(
     arg5: u32,
 ) u64 {
     @setRuntimeSafety(false);
-    const fbTerminal = @as(*terminal.FramebufferTerminal, @ptrFromInt(FRAMEBUFFER_TERM));
-    fbTerminal.putString("Hello, World!\n");
+    const extensions = @as(*ext.KernelExtensions, @ptrFromInt(kernel_extensions));
+    out.initOutputs();
+    out.switchToSerial();
+    const term: *terminal.FramebufferTerminal = @as(*terminal.FramebufferTerminal, @ptrFromInt(extensions.framebufferTerminal));
+    term.putString("Hello, World!");
     switch (syscall_number) {
         0 => return read(arg1, arg2, arg3, arg4, arg5),
         1 => return write(arg1, arg2, arg3, arg4, arg5),
@@ -53,7 +57,6 @@ export fn syscall_handler(
 }
 
 fn write(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32) u64 {
-    out.switchToSerial();
     const ptr: [*]const u8 = @ptrFromInt(arg2);
     const len = arg3;
     const fd = arg1;

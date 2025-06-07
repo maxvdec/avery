@@ -9,7 +9,7 @@ pub const PAGE_USER = 1 << 2;
 
 pub const USER_SPACE_START: usize = 0x400000;
 pub const USER_SPACE_END: usize = 0x80000000;
-pub const KERNEL_MEM_BASE: usize = 0xC0000000;
+pub const KERNEL_MEM_BASE: usize = 0x80000000;
 pub const USER_CODE_VADDR: usize = 0x00400000;
 pub const USER_STACK_VADDR: usize = 0x7FFFE000;
 
@@ -20,6 +20,7 @@ pub var page_dir_str: PageDirectory = PageDirectory{
 };
 
 var next_free_virt: usize = 0x1000000;
+var next_kernel_virt: usize = KERNEL_MEM_BASE + 0x1000000; // Start after initial kernel mappings
 var next_user_virt: usize = USER_SPACE_START;
 
 pub const PageDirectory = struct {
@@ -131,6 +132,33 @@ pub fn allocVirtual(size: usize, flags: u32) ?usize {
     return virt_addr;
 }
 
+pub fn allocKernelVirtual(size: usize, flags: u32) ?usize {
+    @setRuntimeSafety(false);
+    const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+    const virt_addr = next_kernel_virt;
+
+    if (virt_addr + (pages_needed * PAGE_SIZE) >= USER_SPACE_START) {
+        out.print("Kernel virtual memory exhausted!\n");
+        return null;
+    }
+
+    var i: usize = 0;
+    while (i < pages_needed) : (i += 1) {
+        const phys = pmm.allocPage() orelse {
+            var j: usize = 0;
+            while (j < i) : (j += 1) {
+                unmapPage(virt_addr + j * PAGE_SIZE);
+            }
+            return null;
+        };
+        mapPage(virt_addr + i * PAGE_SIZE, phys, flags | PAGE_PRESENT | PAGE_RW);
+    }
+
+    next_kernel_virt += pages_needed * PAGE_SIZE;
+
+    return virt_addr;
+}
+
 pub fn freeVirtual(virt_start: usize, size: usize) void {
     const pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
 
@@ -237,7 +265,7 @@ pub fn mapKernelMemory(phys_addr: usize, size: usize) usize {
     const pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     const flags = PAGE_PRESENT | PAGE_RW;
 
-    const virt_addr = next_free_virt;
+    const virt_addr = next_kernel_virt;
 
     var i: usize = 0;
     while (i < pages_needed) : (i += 1) {
@@ -283,9 +311,7 @@ pub fn createUserPageDirectory() ?PageDirectory {
 
     for (0..1024) |i| {
         if ((page_directory[i] & PAGE_PRESENT) != 0) {
-            if ((page_directory[i] & PAGE_USER) == 0) {
-                page_dir[i] = page_directory[i];
-            }
+            page_dir[i] = page_directory[i];
         }
     }
 

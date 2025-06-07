@@ -21,7 +21,3 @@ Note that for compatibility with some libraries and in standard, we mostly use *
 | close | `0x3` | Destroys and closes a file descriptor | `close(fd: usize) isize` |
 | memmap | `0x9` | Maps a file or memory into the process address space | `memmap(addr: usize, length: usize, prot: u32, flags: u32, fd: usize, offset: usize) usize`
 | end | `0x3C` | Ends a process with a specific code | `end(code: usize) noreturn`
-
-## The public variables
-There are some variables that are stored in kernel memory, and those are shared with system-calls. Here's the record:
-* `0xC1000010` is the **Framebuffer Terminal**

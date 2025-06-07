@@ -5,6 +5,7 @@ const Color = @import("framebuffer").Color;
 const out = @import("output");
 const Position = @import("framebuffer").Position;
 const str = @import("string");
+const kalloc = @import("kern_allocator");
 
 extern fn memcpy(dest: [*]u8, src: [*]const u8, len: usize) [*]u8;
 
@@ -32,9 +33,14 @@ pub const FramebufferTerminal = struct {
         const max_cols = framebuffer.framebufferTag.width / font_width;
         const max_rows = framebuffer.framebufferTag.height / font_height;
 
+        const fontPtr = kalloc.storeKernel(font.Font);
+        const fbPtr = kalloc.storeKernel(Framebuffer);
+        fontPtr.* = terminal_font.*;
+        fbPtr.* = framebuffer.*;
+
         return FramebufferTerminal{
-            .font = terminal_font,
-            .framebuffer = framebuffer,
+            .font = fontPtr,
+            .framebuffer = fbPtr,
             .cursor_x = 0,
             .cursor_y = 0,
             .max_cols = max_cols,

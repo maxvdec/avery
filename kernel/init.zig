@@ -24,6 +24,7 @@ const syscall = @import("syscall");
 const vfs = @import("vfs");
 const tss = @import("tss");
 const process = @import("process");
+const kalloc = @import("kern_allocator");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -49,6 +50,8 @@ extern fn memcpy(
 ) [*]u8;
 
 const STACK_SIZE: usize = 16384; // 16 KiB
+
+export var kernel_extensions: u32 = 0;
 
 export fn kernel_main(magic: u32, addr: u32) noreturn {
     @setRuntimeSafety(false);
@@ -97,13 +100,16 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     out.println("Virtual memory initialized.");
     // Get some utilities for the kernel
     _ = alloc.initHeap();
+    _ = kalloc.initKernelHeap();
     _ = fusion.getAtaController();
 
     // Obtain the framebuffer and font
-    const fb = framebuffer.Framebuffer.init(fbTag);
-    const fnt = font.Font.init();
+    const fb = alloc.store(framebuffer.Framebuffer);
+    fb.* = framebuffer.Framebuffer.init(fbTag);
+    const fnt = alloc.store(font.Font);
+    fnt.* = font.Font.init();
     var fbTerminal = alloc.store(terminal.FramebufferTerminal);
-    fbTerminal.* = terminal.FramebufferTerminal.init(&fb, &fnt);
+    fbTerminal.* = terminal.FramebufferTerminal.init(fb, fnt);
 
     const proc_code = [_]u8{
         // write(1, current_addr + 20, 14)
@@ -125,7 +131,6 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
 
     // Initialize the terminal
     out.switchToGraphics(fbTerminal);
-    out.printHex(virtmem.physicalToVirtual(@intFromPtr(fbTerminal)).?);
 
     const proc = process.Process.create_process(&proc_code) orelse {
         out.println("Failed to create process.");

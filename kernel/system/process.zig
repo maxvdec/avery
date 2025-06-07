@@ -4,6 +4,8 @@ const out = @import("output");
 const sys = @import("system");
 const mem = @import("memory");
 const alloc = @import("allocator");
+const kalloc = @import("kern_allocator");
+const ext = @import("extensions");
 
 pub const ProcessState = enum {
     Ready,
@@ -42,6 +44,8 @@ const USER_STACK_SIZE: usize = 2 * vmm.PAGE_SIZE;
 const GDT_USER_CODE = 0x1B;
 const GDT_USER_DATA = 0x23;
 
+extern var kernel_extensions: u32;
+
 extern fn switch_to_user_mode(
     eax: u32,
     ebx: u32,
@@ -71,6 +75,8 @@ pub const Process = struct {
     code_base: usize,
     code_size: usize,
     context: ProcessContext,
+    kernel_extensions: *ext.KernelExtensions = undefined,
+    kernel_extensions_addr: u32 = 0,
 
     fn setupStack(self: *Process) u32 {
         @setRuntimeSafety(false);
@@ -146,6 +152,13 @@ pub const Process = struct {
         proc.context.gs = GDT_USER_DATA;
         proc.context.ss = GDT_USER_DATA;
 
+        var kernel_ext = kalloc.storeKernel(ext.KernelExtensions);
+        kernel_ext.* = .{};
+        kernel_ext.requestTerminal();
+
+        proc.kernel_extensions = kernel_ext;
+        proc.kernel_extensions_addr = @intFromPtr(kernel_ext);
+
         process_list.append(proc);
 
         vmm.tempUnmap(code_vaddr);
@@ -161,6 +174,8 @@ pub const Process = struct {
         out.print("Page dir physical: ");
         out.printHex(self.page_dir.physical);
         out.print("\n");
+
+        kernel_extensions = self.kernel_extensions_addr;
 
         switch_to_user_mode(
             self.context.eax,
