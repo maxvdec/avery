@@ -69,10 +69,16 @@ pub const Framebuffer = struct {
         const framebufferSize = framebufferTag.pitch * framebufferTag.height;
 
         const virtFramebufferAddr = virtmem.mapKernelMemory(@as(usize, @intCast(framebufferTag.addr)), framebufferSize);
+        out.switchToSerial();
+        out.print("Framebuffer virtual address: ");
+        out.printHex(virtFramebufferAddr);
+        out.println("");
 
         const backbufferVirtAddr = virtmem.allocKernelVirtual(framebufferSize, virtmem.PAGE_PRESENT | virtmem.PAGE_RW) orelse {
             sys.panic("Failed to allocate virtual memory for framebuffer backbuffer");
         };
+        out.printHex(backbufferVirtAddr);
+        out.println("");
 
         const backbufferSlice: [*]u8 = @ptrFromInt(backbufferVirtAddr);
         for (0..framebufferSize) |i| {

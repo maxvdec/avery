@@ -174,6 +174,9 @@ pub const Process = struct {
         out.print("Page dir physical: ");
         out.printHex(self.page_dir.physical);
         out.print("\n");
+        out.print("Kernel extensions address: ");
+        out.printHex(self.kernel_extensions_addr);
+        out.print("\n");
 
         kernel_extensions = self.kernel_extensions_addr;
 

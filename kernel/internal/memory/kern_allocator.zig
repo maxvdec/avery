@@ -20,28 +20,34 @@ var kernel_total_blocks: usize = 0;
 const INITIAL_KERNEL_HEAP_SIZE = 8 * pmm.PAGE_SIZE;
 const MIN_BLOCK_SIZE = 16;
 
-var next_kernel_heap_addr: usize = vmm.KERNEL_MEM_BASE + 0x1000000; // Start after initial kernel mappings
+var kernel_heap_base: usize = vmm.KERNEL_MEM_BASE + 0x2000000;
+var next_kernel_heap_addr: usize = 0;
 
 pub fn initKernelHeap() bool {
     @setRuntimeSafety(false);
     if (kernel_heap_start != null) return true;
 
-    // Allocate physical pages for kernel heap
+    if (next_kernel_heap_addr == 0) {
+        next_kernel_heap_addr = kernel_heap_base;
+    }
+
     const pages_needed = INITIAL_KERNEL_HEAP_SIZE / vmm.PAGE_SIZE;
+    var allocated_pages: [64]usize = undefined;
     var i: usize = 0;
+
     while (i < pages_needed) : (i += 1) {
         const phys = pmm.allocPage() orelse {
-            // Cleanup on failure
             var j: usize = 0;
             while (j < i) : (j += 1) {
                 vmm.unmapPage(next_kernel_heap_addr + j * vmm.PAGE_SIZE);
+                pmm.freePage(allocated_pages[j]);
             }
             return false;
         };
 
-        // Map physical page to kernel virtual address
-        vmm.mapPage(next_kernel_heap_addr + i * vmm.PAGE_SIZE, phys, vmm.PAGE_PRESENT | vmm.PAGE_RW // No PAGE_USER for kernel space
-        );
+        allocated_pages[i] = phys;
+
+        vmm.mapPage(next_kernel_heap_addr + i * vmm.PAGE_SIZE, phys, vmm.PAGE_PRESENT | vmm.PAGE_RW);
     }
 
     kernel_heap_start = @as(*BlockHeader, @ptrCast(@alignCast(@as(*anyopaque, @ptrFromInt(next_kernel_heap_addr)))));
@@ -59,32 +65,45 @@ pub fn initKernelHeap() bool {
     kernel_free_blocks = 1;
     kernel_used_blocks = 0;
 
-    // Update next available kernel address
     next_kernel_heap_addr += INITIAL_KERNEL_HEAP_SIZE;
+
+    out.print("Kernel heap initialized at virtual: ");
+    out.printHex(@intFromPtr(kernel_heap_start));
+    out.print(" size: ");
+    out.printHex(kernel_heap_size);
+    out.println("");
 
     return true;
 }
 
 fn expandKernelHeap(min_size: usize) bool {
     @setRuntimeSafety(false);
+
     const expand_size = if (min_size > pmm.PAGE_SIZE)
         ((min_size + pmm.PAGE_SIZE - 1) / pmm.PAGE_SIZE) * pmm.PAGE_SIZE
     else
         pmm.PAGE_SIZE;
 
-    // Allocate and map physical pages to kernel virtual space
+    if (next_kernel_heap_addr + expand_size >= vmm.USER_SPACE_START) {
+        out.println("Kernel heap expansion would overflow into user space!");
+        return false;
+    }
+
     const pages_needed = expand_size / vmm.PAGE_SIZE;
+    var allocated_pages: [64]usize = undefined;
     var i: usize = 0;
+
     while (i < pages_needed) : (i += 1) {
         const phys = pmm.allocPage() orelse {
-            // Cleanup on failure
             var j: usize = 0;
             while (j < i) : (j += 1) {
                 vmm.unmapPage(next_kernel_heap_addr + j * vmm.PAGE_SIZE);
+                pmm.freePage(allocated_pages[j]);
             }
             return false;
         };
 
+        allocated_pages[i] = phys;
         vmm.mapPage(next_kernel_heap_addr + i * vmm.PAGE_SIZE, phys, vmm.PAGE_PRESENT | vmm.PAGE_RW);
     }
 
@@ -95,8 +114,6 @@ fn expandKernelHeap(min_size: usize) bool {
         .next = null,
         .prev = null,
     };
-
-    // Link to existing kernel heap
     var current = kernel_heap_start;
     while (current != null and current.?.next != null) {
         current = current.?.next;
@@ -106,7 +123,8 @@ fn expandKernelHeap(min_size: usize) bool {
         current.?.next = new_block;
         new_block.prev = current;
 
-        if (current.?.is_free) {
+        const current_end = @intFromPtr(current) + @sizeOf(BlockHeader) + current.?.size;
+        if (current.?.is_free and current_end == @intFromPtr(new_block)) {
             mergeKernelBlocks(current.?, new_block);
         } else {
             kernel_total_blocks += 1;
@@ -116,6 +134,13 @@ fn expandKernelHeap(min_size: usize) bool {
 
     kernel_heap_size += expand_size;
     next_kernel_heap_addr += expand_size;
+
+    out.print("Kernel heap expanded by ");
+    out.printHex(expand_size);
+    out.print(" bytes to ");
+    out.printHex(kernel_heap_size);
+    out.println(" total");
+
     return true;
 }
 
@@ -155,11 +180,22 @@ fn coalesceKernelBlocks(mut_block: *BlockHeader) void {
     var current = mut_block;
 
     while (current.prev != null and current.prev.?.is_free) {
-        current = current.prev.?;
+        const prev_end = @intFromPtr(current.prev) + @sizeOf(BlockHeader) + current.prev.?.size;
+        if (prev_end == @intFromPtr(current)) {
+            mergeKernelBlocks(current.prev.?, current);
+            current = current.prev.?;
+        } else {
+            break;
+        }
     }
 
     while (current.next != null and current.next.?.is_free) {
-        mergeKernelBlocks(current, current.next.?);
+        const current_end = @intFromPtr(current) + @sizeOf(BlockHeader) + current.size;
+        if (current_end == @intFromPtr(current.next)) {
+            mergeKernelBlocks(current, current.next.?);
+        } else {
+            break;
+        }
     }
 }
 
@@ -196,7 +232,7 @@ pub fn requestKernel(size: usize) ?[*]u8 {
     if (size == 0) return null;
 
     if (!initKernelHeap()) {
-        out.print("Failed to initialize kernel heap\n");
+        out.println("Failed to initialize kernel heap");
         return null;
     }
 
@@ -205,17 +241,17 @@ pub fn requestKernel(size: usize) ?[*]u8 {
     var block = findKernelFreeBlock(aligned_size);
     if (block == null) {
         if (!expandKernelHeap(aligned_size + @sizeOf(BlockHeader))) {
-            out.print("Failed to expand kernel heap\n");
+            out.println("Failed to expand kernel heap");
             return null;
         }
         block = findKernelFreeBlock(aligned_size);
         if (block == null) {
-            out.print("Still no suitable kernel block after expansion\n");
+            out.println("Still no suitable kernel block after expansion");
             return null;
         }
     }
 
-    splitBlock(block.?, aligned_size); // Reuse existing splitBlock function
+    splitBlock(block.?, aligned_size);
 
     if (block.?.is_free) {
         kernel_free_blocks -= 1;
@@ -226,7 +262,6 @@ pub fn requestKernel(size: usize) ?[*]u8 {
     const user_data_addr = @intFromPtr(block.?) + @sizeOf(BlockHeader);
     const user_ptr = @as([*]u8, @ptrFromInt(user_data_addr));
 
-    // Zero initialize
     for (0..aligned_size) |i| {
         user_ptr[i] = 0;
     }
@@ -234,7 +269,6 @@ pub fn requestKernel(size: usize) ?[*]u8 {
     return user_ptr;
 }
 
-// Kernel-specific object allocation functions
 pub fn storeKernel(comptime T: type) *T {
     @setRuntimeSafety(false);
     const size = @sizeOf(T);
@@ -259,10 +293,17 @@ pub fn freeKernel(ptr: [*]u8) void {
 
     if (kernel_heap_start == null) return;
 
-    const block_addr = @intFromPtr(ptr) - @sizeOf(BlockHeader);
+    const ptr_addr = @intFromPtr(ptr);
+    if (ptr_addr < @intFromPtr(kernel_heap_start) or ptr_addr >= kernel_heap_end) {
+        out.println("Invalid kernel pointer freed!");
+        return;
+    }
+
+    const block_addr = ptr_addr - @sizeOf(BlockHeader);
     const block = @as(*BlockHeader, @ptrCast(@alignCast(@as(*anyopaque, @ptrFromInt(block_addr)))));
 
     if (block.is_free) {
+        out.println("Double free detected in kernel heap!");
         return;
     }
 
@@ -275,10 +316,18 @@ pub fn freeKernel(ptr: [*]u8) void {
 
 pub fn freeKernelObject(comptime T: type, obj: *T) void {
     @setRuntimeSafety(false);
-    const block_addr = @intFromPtr(obj) - @sizeOf(BlockHeader);
+    const ptr_addr = @intFromPtr(obj);
+
+    if (ptr_addr < @intFromPtr(kernel_heap_start) or ptr_addr >= kernel_heap_end) {
+        out.println("Invalid kernel object freed!");
+        return;
+    }
+
+    const block_addr = ptr_addr - @sizeOf(BlockHeader);
     const block = @as(*BlockHeader, @ptrCast(@alignCast(@as(*anyopaque, @ptrFromInt(block_addr)))));
 
     if (block.is_free) {
+        out.println("Double free detected in kernel heap!");
         return;
     }
 
@@ -294,6 +343,8 @@ pub fn debugKernelHeap() void {
     out.println("=== Kernel Heap Memory ===");
     out.print("Kernel heap start: ");
     out.printHex(@intFromPtr(kernel_heap_start));
+    out.print(", end: ");
+    out.printHex(kernel_heap_end);
     out.print(", size: ");
     out.printHex(kernel_heap_size);
     out.println("");
@@ -307,4 +358,89 @@ pub fn debugKernelHeap() void {
     out.print("Used kernel blocks: ");
     out.printn(kernel_used_blocks);
     out.println("");
+
+    var current = kernel_heap_start;
+    var block_count: usize = 0;
+    var free_count: usize = 0;
+    var used_count: usize = 0;
+
+    out.println("Block list:");
+    while (current != null) : (current = current.?.next) {
+        out.print("  Block ");
+        out.printn(@as(u32, @intCast(block_count)));
+        out.print(" at ");
+        out.printHex(@intFromPtr(current));
+        out.print(" size: ");
+        out.printHex(current.?.size);
+        out.print(" free: ");
+        if (current.?.is_free) {
+            out.println("YES");
+            free_count += 1;
+        } else {
+            out.println("NO");
+            used_count += 1;
+        }
+        block_count += 1;
+
+        if (block_count > 100) { // Safety check
+            out.println("Too many blocks, stopping iteration");
+            break;
+        }
+    }
+
+    out.print("Counted blocks: ");
+    out.printn(@as(u32, @intCast(block_count)));
+    out.print(" (free: ");
+    out.printn(@as(u32, @intCast(free_count)));
+    out.print(", used: ");
+    out.printn(@as(u32, @intCast(used_count)));
+    out.println(")");
+}
+
+pub fn verifyKernelHeapMapping() bool {
+    @setRuntimeSafety(false);
+
+    if (kernel_heap_start == null) {
+        out.println("Kernel heap not initialized");
+        return false;
+    }
+
+    out.println("=== Kernel Heap Mapping Verification ===");
+
+    const heap_start_virt = @intFromPtr(kernel_heap_start);
+    const heap_start_phys = vmm.translate(heap_start_virt);
+
+    if (heap_start_phys) |phys| {
+        out.print("Heap start mapping OK: ");
+        out.printHex(heap_start_virt);
+        out.print(" -> ");
+        out.printHex(phys);
+        out.println("");
+    } else {
+        out.print("ERROR: Heap start not mapped at ");
+        out.printHex(heap_start_virt);
+        out.println("");
+        return false;
+    }
+
+    const pages_to_check = kernel_heap_size / vmm.PAGE_SIZE;
+    var i: usize = 0;
+    while (i < pages_to_check) : (i += 1) {
+        const virt = heap_start_virt + i * vmm.PAGE_SIZE;
+        const phys = vmm.translate(virt);
+
+        if (phys == null) {
+            out.print("ERROR: Heap page not mapped at ");
+            out.printHex(virt);
+            out.print(" (page ");
+            out.printn(@as(u32, @intCast(i)));
+            out.println(")");
+            return false;
+        }
+    }
+
+    out.print("All ");
+    out.printn(@as(u32, @intCast(pages_to_check)));
+    out.println(" kernel heap pages are properly mapped");
+    return true;
 }
