@@ -35,7 +35,6 @@ const PF_X = 1 << 0;
 const PF_W = 1 << 1;
 const PF_R = 1 << 2;
 
-// Section header types
 const SHT_NULL = 0;
 const SHT_PROGBITS = 1;
 const SHT_SYMTAB = 2;
@@ -49,12 +48,10 @@ const SHT_REL = 9;
 const SHT_SHLIB = 10;
 const SHT_DYNSYM = 11;
 
-// Section header flags
 const SHF_WRITE = 1 << 0;
 const SHF_ALLOC = 1 << 1;
 const SHF_EXECINSTR = 1 << 2;
 
-// Dynamic table tags
 const DT_NULL = 0;
 const DT_NEEDED = 1;
 const DT_PLTRELSZ = 2;
@@ -80,7 +77,6 @@ const DT_DEBUG = 21;
 const DT_TEXTREL = 22;
 const DT_JMPREL = 23;
 
-// Relocation types for i386
 const R_386_NONE = 0;
 const R_386_32 = 1;
 const R_386_PC32 = 2;
@@ -90,6 +86,16 @@ const R_386_COPY = 5;
 const R_386_GLOB_DAT = 6;
 const R_386_JMP_SLOT = 7;
 const R_386_RELATIVE = 8;
+
+const STB_LOCAL = 0;
+const STB_GLOBAL = 1;
+const STB_WEAK = 2;
+
+const STT_NOTYPE = 0;
+const STT_OBJECT = 1;
+const STT_FUNC = 2;
+const STT_SECTION = 3;
+const STT_FILE = 4;
 
 const ElfHeader = packed struct {
     ei_mag0: u8,
@@ -249,6 +255,7 @@ pub fn validateElfHeader(elf_data: []const u8) ?*const ElfHeader {
 }
 
 fn getSectionName(elf_data: []const u8, header: *const ElfHeader, section: *const SectionHeader) ?[]const u8 {
+    @setRuntimeSafety(false);
     if (header.e_shstrndx == 0) return null;
 
     const shstrtab_offset = header.e_shoff + (header.e_shstrndx * header.e_shentsize);
@@ -308,20 +315,12 @@ pub fn extractElfData(elf_data: []const u8) ?ExtractedElf {
         return null;
     };
 
-    out.println("Valid ELF header found");
-    out.print("ELF type: ");
-    out.printHex(header.e_type);
-    out.println("");
-    out.print("ELF entry point: ");
-    out.printHex(header.e_entry);
-    out.println("");
-
     var sections = mem.Array(LoadedSection).init();
     var dynamic_table: ?[]const DynamicEntry = null;
     var base_addr: u32 = 0xFFFFFFFF;
     const is_dynamic = header.e_type == ET_DYN;
 
-    for (0..header.e_phnum) |i| {
+    for (0..header.e_phnum - 1) |i| {
         const ph_addr = header.e_phoff + (i * header.e_phentsize);
         if (ph_addr + @sizeOf(ProgramHeader) > elf_data.len) continue;
 
@@ -358,14 +357,6 @@ pub fn extractElfData(elf_data: []const u8) ?ExtractedElf {
             };
 
             sections.append(section);
-
-            out.print("Loaded section at vaddr: ");
-            out.printHex(ph.p_vaddr);
-            out.print(", size: ");
-            out.printHex(ph.p_memsz);
-            out.print(", flags: ");
-            out.printHex(ph.p_flags);
-            out.println("");
         } else if (ph.p_type == PT_DYNAMIC) {
             if (ph.p_offset + ph.p_filesz <= elf_data.len) {
                 const dyn_data = elf_data[ph.p_offset .. ph.p_offset + ph.p_filesz];
@@ -422,6 +413,7 @@ pub fn extractElfData(elf_data: []const u8) ?ExtractedElf {
 }
 
 fn performRelocations(elf_info: *ExtractedElf, loaded_libs: ?*LoadedLibrary) void {
+    @setRuntimeSafety(false);
     const dyn_table = elf_info.dynamic_table orelse return;
 
     var rel_table: ?[]const RelEntry = null;
@@ -573,15 +565,10 @@ pub fn loadElfProcess(elf_data: []const u8) ?*proc.Process {
 
     process.context.eip = vmm.USER_CODE_VADDR + (elf_info.entry_point - elf_info.base_addr);
 
-    out.print("Process created with entry point: ");
-    out.printHex(process.context.eip);
-    out.println("");
-
     return process;
 }
 
 pub fn elfTest() void {
-    out.println("Testing enhanced ELF loader...");
 
     // Test with a more complex ELF that has multiple sections
     const elf_bytes = [_]u8{
@@ -639,6 +626,5 @@ pub fn elfTest() void {
         return;
     };
 
-    out.println("Enhanced ELF loader test completed successfully");
     process.run();
 }
