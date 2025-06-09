@@ -607,10 +607,7 @@ pub fn loadElfProcess(elf_data: []const u8) ?*proc.Process {
 }
 
 pub fn elfTest() void {
-
-    // Test with a more complex ELF that has multiple sections
     const elf_bytes = [_]u8{
-        // ELF Header
         0x7F, 'E', 'L', 'F', // e_ident[0..3] - ELF magic
         0x01, // e_ident[4] - EI_CLASS (32-bit)
         0x01, // e_ident[5] - EI_DATA (little endian)
@@ -631,8 +628,6 @@ pub fn elfTest() void {
         0x00, 0x00, // e_shentsize
         0x00, 0x00, // e_shnum
         0x00, 0x00, // e_shstrndx
-
-        // Program Header 1 - Code section
         0x01, 0x00, 0x00, 0x00, // p_type - PT_LOAD
         0x74, 0x00, 0x00, 0x00, // p_offset - offset in file
         0x00, 0x10, 0x40, 0x00, // p_vaddr - virtual address
@@ -641,8 +636,6 @@ pub fn elfTest() void {
         0x04, 0x00, 0x00, 0x00, // p_memsz - size in memory
         0x05, 0x00, 0x00, 0x00, // p_flags - PF_R | PF_X
         0x00, 0x10, 0x00, 0x00, // p_align - alignment
-
-        // Program Header 2 - Data section
         0x01, 0x00, 0x00, 0x00, // p_type - PT_LOAD
         0x78, 0x00, 0x00, 0x00, // p_offset - offset in file
         0x00, 0x20, 0x40, 0x00, // p_vaddr - virtual address
@@ -651,11 +644,7 @@ pub fn elfTest() void {
         0x04, 0x00, 0x00, 0x00, // p_memsz - size in memory
         0x06, 0x00, 0x00, 0x00, // p_flags - PF_R | PF_W
         0x00, 0x10, 0x00, 0x00, // p_align - alignment
-
-        // Code section (at offset 0x74)
         0xEB, 0xFE, 0x90, 0x90, // jmp $ + nops
-
-        // Data section (at offset 0x78)
         0xDE, 0xAD, 0xBE, 0xEF, // some data
     };
 
