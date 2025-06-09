@@ -4,7 +4,6 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -44,12 +43,29 @@ void copyFile(const fs::path &diskPath, const std::string &fileName,
         return;
     }
 
-    std::string filePath =
-        fileName; // Use fileName directly as the source file path
-    std::cout << "Source file path: " << filePath << std::endl;
-    std::ifstream sourceFile(filePath, std::ios::binary);
+    // Fix: Properly resolve the source file path
+    fs::path sourceFilePath;
+    try {
+        sourceFilePath = fs::canonical(fs::path(fileName));
+        std::cout << "Resolved source file path: " << sourceFilePath
+                  << std::endl;
+    } catch (const fs::filesystem_error &e) {
+        // If canonical fails (file doesn't exist), try absolute
+        try {
+            sourceFilePath = fs::absolute(fs::path(fileName));
+            std::cout << "Resolved source file path (absolute): "
+                      << sourceFilePath << std::endl;
+        } catch (const fs::filesystem_error &e2) {
+            std::cerr << "Error: Unable to resolve file path: " << fileName
+                      << " - " << e2.what() << std::endl;
+            return;
+        }
+    }
+
+    std::ifstream sourceFile(sourceFilePath, std::ios::binary);
     if (!sourceFile) {
-        std::cerr << "Error: Unable to open source file." << std::endl;
+        std::cerr << "Error: Unable to open source file at " << sourceFilePath
+                  << std::endl;
         return;
     }
     std::vector<char> buffer(std::istreambuf_iterator<char>(sourceFile), {});
@@ -59,15 +75,22 @@ void copyFile(const fs::path &diskPath, const std::string &fileName,
         return;
     }
 
-    std::string withoutLastComponent =
-        fileName.substr(0, fileName.find_last_of("/\\"));
-    std::string lastComponent =
-        fileName.substr(fileName.find_last_of("/\\") + 1);
+    // Fix: Properly extract directory and filename components using filesystem
+    fs::path destinationPath(path);
+    std::string parentDirectory = destinationPath.parent_path().string();
+    std::string lastComponent = destinationPath.filename().string();
+
+    // Convert to forward slashes for consistency (if needed by your filesystem)
+    std::replace(parentDirectory.begin(), parentDirectory.end(), '\\', '/');
+
+    std::cout << "Parent directory: '" << parentDirectory << "'" << std::endl;
+    std::cout << "File name: '" << lastComponent << "'" << std::endl;
 
     uint32_t parentRegion =
-        traverseDirectory(diskPath, withoutLastComponent, partitionIndex);
+        traverseDirectory(diskPath, parentDirectory, partitionIndex);
     if (parentRegion == 0) {
-        std::cerr << "Error: Unable to find parent directory." << std::endl;
+        std::cerr << "Error: Unable to find parent directory: "
+                  << parentDirectory << std::endl;
         return;
     }
 
@@ -99,6 +122,7 @@ void copyFile(const fs::path &diskPath, const std::string &fileName,
         std::cout << region << " ";
     }
     std::cout << std::endl;
+
     for (int i = 0; i < neededRegions; i++) {
         diskFile.seekp(freeRegions[i] * 512);
 
