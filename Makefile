@@ -70,7 +70,7 @@ clean:
 
 .PHONY: all clean run stdio terminal
 
-run: avery.iso
+run: $(OUTDIR)/avery.iso
 	@clear
 	@qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -serial stdio 
 
@@ -78,10 +78,10 @@ nographic:
 	qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -nographic
 	@echo "Running in non-graphical mode"
 
-stdio: avery.iso
+stdio: $(OUTDIR)/avery.iso
 	qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -monitor stdio
 	@echo "Running with stdio"
 
-terminal: avery.iso
+terminal: $(OUTDIR)/avery.iso
 	qemu-system-x86_64 -cdrom avery.iso -drive file=disk.img,format=raw -m 128M -boot d -terminal stdio
 	@echo "Running with terminal"
