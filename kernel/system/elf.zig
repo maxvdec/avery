@@ -581,7 +581,7 @@ pub fn loadElfProcess(elf_data: []const u8) ?*proc.Process {
         }
     }
 
-    const combined_data = alloc.request(total_size) orelse {
+    const combined_data = kalloc.requestKernel(total_size) orelse {
         out.println("Failed to allocate combined memory for process");
         return null;
     };
