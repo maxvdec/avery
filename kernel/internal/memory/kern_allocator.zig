@@ -229,7 +229,10 @@ fn splitBlock(block: *BlockHeader, size: usize) void {
 pub fn requestKernel(size: usize) ?[*]u8 {
     @setRuntimeSafety(false);
 
-    if (size == 0) return null;
+    if (size == 0) {
+        out.println("Request for zero size kernel memory");
+        return null;
+    }
 
     if (!initKernelHeap()) {
         out.println("Failed to initialize kernel heap");

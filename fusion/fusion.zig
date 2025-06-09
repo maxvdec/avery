@@ -317,6 +317,11 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                     continue;
                 }
                 const proc = elf.loadElfProcess(file.?);
+                if (proc == null) {
+                    out.println("Failed to load ELF file");
+                    lastExitCode = 1;
+                    continue;
+                }
                 proc.?.run();
 
                 lastExitCode = 0;

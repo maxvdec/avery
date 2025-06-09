@@ -317,7 +317,6 @@ fn getSectionName(elf_data: []const u8, header: *const ElfHeader, section: *cons
 fn extractNeededLibraries(dynamic_table: []const DynamicEntry, string_table: []const u8) ![][]const u8 {
     var needed_count: usize = 0;
 
-    // Count needed libraries
     for (dynamic_table) |entry| {
         if (entry.d_tag == DT_NEEDED) {
             needed_count += 1;
@@ -358,13 +357,17 @@ pub fn extractElfData(elf_data: []const u8) ?ExtractedElf {
     var base_addr: u32 = 0xFFFFFFFF;
     const is_dynamic = header.e_type == ET_DYN;
 
-    for (0..header.e_phnum - 1) |i| {
+    for (0..header.e_phnum) |i| {
+        out.print("Processing program header ");
+        out.printHex(i);
+        out.println("");
         const ph_addr = header.e_phoff + (i * header.e_phentsize);
         if (ph_addr + @sizeOf(ProgramHeader) > elf_data.len) continue;
 
-        const ph = @as(*const ProgramHeader, @alignCast(@ptrCast(elf_data.ptr + ph_addr)));
+        const ph = mem.reinterpretBytes(ProgramHeader, elf_data[ph_addr .. ph_addr + @sizeOf(ProgramHeader)], true).unwrap();
 
         if (ph.p_type == PT_LOAD) {
+            out.println("Found PT_LOAD segment");
             if (ph.p_vaddr < base_addr) {
                 base_addr = ph.p_vaddr;
             }
@@ -396,6 +399,7 @@ pub fn extractElfData(elf_data: []const u8) ?ExtractedElf {
 
             sections.append(section);
         } else if (ph.p_type == PT_DYNAMIC) {
+            out.println("Found PT_DYNAMIC segment");
             if (ph.p_offset + ph.p_filesz <= elf_data.len) {
                 const dyn_data = elf_data[ph.p_offset .. ph.p_offset + ph.p_filesz];
                 const entry_count = ph.p_filesz / @sizeOf(DynamicEntry);
@@ -405,6 +409,10 @@ pub fn extractElfData(elf_data: []const u8) ?ExtractedElf {
                 out.printHex(@intCast(entry_count));
                 out.println(" entries");
             }
+        } else {
+            out.print("Skipping unsupported program header type: ");
+            out.printHex(ph.p_type);
+            out.println("");
         }
     }
 
@@ -541,15 +549,14 @@ fn resolveSymbol(elf_info: *ExtractedElf, sym_index: u32, loaded_libs: ?*LoadedL
     _ = elf_info;
     _ = sym_index;
     _ = loaded_libs;
-    // Simplified symbol resolution - in a real implementation,
-    // you'd look up the symbol in the symbol table and resolve
-    // it against loaded libraries
+    // TODO: Resolve symbols correctly
     return 0;
 }
 
 pub fn loadDynamicLibrary(lib_path: []const u8) ?*LoadedLibrary {
     out.print("Loading dynamic library: ");
     out.println(lib_path);
+    // TODO: Implement dynamic library loading
     return null;
 }
 
@@ -575,11 +582,23 @@ pub fn loadElfProcess(elf_data: []const u8) ?*proc.Process {
 
     var total_size: u32 = 0;
     for (elf_info.sections) |section| {
-        const section_end = section.vaddr + section.size - elf_info.base_addr;
+        debugSection(section);
+        if (section.size == 0 or section.vaddr == 0) continue;
+
+        const section_offset = section.vaddr - elf_info.base_addr;
+        const section_end = section_offset + section.size;
         if (section_end > total_size) {
-            total_size = section_end;
+            total_size = @intCast(section_end);
         }
     }
+
+    if (total_size == 0) {
+        out.println("No valid sections found in ELF");
+        return null;
+    }
+    out.print("Total size of ELF sections: ");
+    out.printHex(total_size);
+    out.println("");
 
     const combined_data = kalloc.requestKernel(total_size) orelse {
         out.println("Failed to allocate combined memory for process");
@@ -589,6 +608,8 @@ pub fn loadElfProcess(elf_data: []const u8) ?*proc.Process {
 
     var combined_size: usize = 0;
     for (elf_info.sections) |section| {
+        if (section.size == 0 or section.vaddr == 0) continue;
+
         const offset = section.vaddr - elf_info.base_addr;
         if (offset + section.size <= total_size) {
             _ = memcpy(combined_data + offset, section.data.ptr, section.data.len);
@@ -733,7 +754,6 @@ pub fn extractExportedFunctions(elf_data: []const u8, loaded_elf: *const Extract
         return null;
     };
 
-    // Count exported functions first
     var func_count: usize = 0;
     for (symbol_info.symtab) |symbol| {
         const sym_type = ELF32_ST_TYPE(symbol.st_info);
@@ -753,11 +773,9 @@ pub fn extractExportedFunctions(elf_data: []const u8, loaded_elf: *const Extract
         };
     }
 
-    // Allocate array for exported functions
     const functions = alloc.storeMany(ExportedFunction, func_count);
     var func_index: usize = 0;
 
-    // Extract function information
     for (symbol_info.symtab) |symbol| {
         const sym_type = ELF32_ST_TYPE(symbol.st_info);
         const sym_bind = ELF32_ST_BIND(symbol.st_info);
@@ -765,7 +783,6 @@ pub fn extractExportedFunctions(elf_data: []const u8, loaded_elf: *const Extract
         if (sym_type == STT_FUNC and (sym_bind == STB_GLOBAL or sym_bind == STB_WEAK) and symbol.st_value != 0) {
             const func_name = getSymbolName(symbol_info.strtab, symbol.st_name) orelse continue;
 
-            // Calculate actual address (adjust for base address if needed)
             const actual_address = if (loaded_elf.is_dynamic)
                 loaded_elf.base_addr + symbol.st_value
             else
@@ -825,6 +842,16 @@ pub fn printExportedFunctions(exports: *const FunctionExports) void {
         }
         out.println(")");
     }
+}
+
+pub fn debugSection(section: LoadedSection) void {
+    out.print("Section at 0x");
+    out.printHex(section.vaddr);
+    out.print(" (size: ");
+    out.printHex(section.size);
+    out.print(", flags: 0x");
+    out.printHex(section.flags);
+    out.println(")");
 }
 
 const ExportData = struct {
