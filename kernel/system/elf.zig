@@ -97,6 +97,14 @@ const STT_FUNC = 2;
 const STT_SECTION = 3;
 const STT_FILE = 4;
 
+fn ELF32_ST_BIND(info: u8) u8 {
+    return info >> 4;
+}
+
+fn ELF32_ST_TYPE(info: u8) u8 {
+    return info & 0xF;
+}
+
 const ElfHeader = packed struct {
     ei_mag0: u8,
     ei_mag1: u8,
@@ -213,6 +221,36 @@ pub const ExtractedElf = struct {
     needed_libraries: [][]const u8,
     is_dynamic: bool,
     base_addr: u32,
+};
+
+pub const ExportedFunction = struct {
+    name: []const u8,
+    address: u32,
+    size: u32,
+    binding: u8, // STB_LOCAL, STB_GLOBAL, STB_WEAK
+    func_ptr: ?*const fn () callconv(.C) void, // Generic function pointer
+};
+
+pub const FunctionExports = struct {
+    functions: []ExportedFunction,
+    count: usize,
+    base_addr: u32,
+
+    pub fn findFunction(self: *const FunctionExports, name: []const u8) ?*const ExportedFunction {
+        for (self.functions[0..self.count]) |*func| {
+            if (mem.compareBytes(func.name, name)) {
+                return func;
+            }
+        }
+        return null;
+    }
+
+    pub fn getFunctionPointer(self: *const FunctionExports, name: []const u8, comptime FuncType: type) ?FuncType {
+        if (self.findFunction(name)) |func| {
+            return @as(FuncType, @ptrFromInt(func.address));
+        }
+        return null;
+    }
 };
 
 pub fn validateElfHeader(elf_data: []const u8) ?*const ElfHeader {
@@ -627,4 +665,204 @@ pub fn elfTest() void {
     };
 
     process.run();
+}
+
+const SymbolTable = struct {
+    symtab: []const Symbol,
+    strtab: []const u8,
+};
+
+fn extractSymbolTable(elf_data: []const u8, header: *const ElfHeader) ?SymbolTable {
+    @setRuntimeSafety(false);
+
+    if (header.e_shnum == 0 or header.e_shoff == 0) {
+        return null;
+    }
+
+    var symtab: ?[]const Symbol = null;
+    var strtab: ?[]const u8 = null;
+    var strtab_section_index: u32 = 0;
+
+    for (0..header.e_shnum) |i| {
+        const sh_offset = header.e_shoff + (i * header.e_shentsize);
+        if (sh_offset + @sizeOf(SectionHeader) > elf_data.len) continue;
+
+        const section = @as(*const SectionHeader, @alignCast(@ptrCast(elf_data.ptr + sh_offset)));
+
+        if (section.sh_type == SHT_SYMTAB) {
+            if (section.sh_offset + section.sh_size <= elf_data.len) {
+                const sym_data = elf_data[section.sh_offset .. section.sh_offset + section.sh_size];
+                const sym_count = section.sh_size / @sizeOf(Symbol);
+                symtab = @as([*]const Symbol, @alignCast(@ptrCast(sym_data.ptr)))[0..sym_count];
+                strtab_section_index = section.sh_link;
+                break;
+            }
+        }
+    }
+
+    if (symtab == null) return null;
+
+    const strtab_sh_offset = header.e_shoff + (strtab_section_index * header.e_shentsize);
+    if (strtab_sh_offset + @sizeOf(SectionHeader) <= elf_data.len) {
+        const strtab_section = @as(*const SectionHeader, @alignCast(@ptrCast(elf_data.ptr + strtab_sh_offset)));
+
+        if (strtab_section.sh_type == SHT_STRTAB and
+            strtab_section.sh_offset + strtab_section.sh_size <= elf_data.len)
+        {
+            strtab = elf_data[strtab_section.sh_offset .. strtab_section.sh_offset + strtab_section.sh_size];
+        }
+    }
+
+    if (strtab == null) return null;
+
+    return .{
+        .symtab = symtab.?,
+        .strtab = strtab.?,
+    };
+}
+
+fn getSymbolName(string_table: []const u8, name_offset: u32) ?[]const u8 {
+    if (name_offset >= string_table.len) return null;
+
+    const name_start = name_offset;
+    var name_end = name_start;
+    while (name_end < string_table.len and string_table[name_end] != 0) {
+        name_end += 1;
+    }
+
+    if (name_end == name_start) return null;
+    return string_table[name_start..name_end];
+}
+
+pub fn extractExportedFunctions(elf_data: []const u8, loaded_elf: *const ExtractedElf) ?FunctionExports {
+    @setRuntimeSafety(false);
+
+    const header = validateElfHeader(elf_data) orelse return null;
+
+    const symbol_info = extractSymbolTable(elf_data, header) orelse {
+        out.println("No symbol table found in ELF");
+        return null;
+    };
+
+    // Count exported functions first
+    var func_count: usize = 0;
+    for (symbol_info.symtab) |symbol| {
+        const sym_type = ELF32_ST_TYPE(symbol.st_info);
+        const sym_bind = ELF32_ST_BIND(symbol.st_info);
+
+        if (sym_type == STT_FUNC and (sym_bind == STB_GLOBAL or sym_bind == STB_WEAK) and symbol.st_value != 0) {
+            func_count += 1;
+        }
+    }
+
+    if (func_count == 0) {
+        out.println("No exported functions found");
+        return FunctionExports{
+            .functions = &[_]ExportedFunction{},
+            .count = 0,
+            .base_addr = loaded_elf.base_addr,
+        };
+    }
+
+    // Allocate array for exported functions
+    const functions = alloc.storeMany(ExportedFunction, func_count);
+    var func_index: usize = 0;
+
+    // Extract function information
+    for (symbol_info.symtab) |symbol| {
+        const sym_type = ELF32_ST_TYPE(symbol.st_info);
+        const sym_bind = ELF32_ST_BIND(symbol.st_info);
+
+        if (sym_type == STT_FUNC and (sym_bind == STB_GLOBAL or sym_bind == STB_WEAK) and symbol.st_value != 0) {
+            const func_name = getSymbolName(symbol_info.strtab, symbol.st_name) orelse continue;
+
+            // Calculate actual address (adjust for base address if needed)
+            const actual_address = if (loaded_elf.is_dynamic)
+                loaded_elf.base_addr + symbol.st_value
+            else
+                symbol.st_value;
+
+            functions[func_index] = ExportedFunction{
+                .name = func_name,
+                .address = actual_address,
+                .size = symbol.st_size,
+                .binding = sym_bind,
+                .func_ptr = @as(?*const fn () callconv(.C) void, @ptrFromInt(actual_address)),
+            };
+
+            func_index += 1;
+        }
+    }
+
+    return FunctionExports{
+        .functions = functions,
+        .count = func_index,
+        .base_addr = loaded_elf.base_addr,
+    };
+}
+
+pub fn getFunctionPointer(exports: *const FunctionExports, name: []const u8, comptime FuncType: type) ?FuncType {
+    if (exports.findFunction(name)) |func| {
+        return @as(FuncType, @ptrFromInt(func.address));
+    }
+    return null;
+}
+
+pub fn getFunctionAddress(exports: *const FunctionExports, name: []const u8) ?u32 {
+    if (exports.findFunction(name)) |func| {
+        return func.address;
+    }
+    return null;
+}
+
+pub fn printExportedFunctions(exports: *const FunctionExports) void {
+    out.print("Found ");
+    out.printHex(@intCast(exports.count));
+    out.println(" exported functions:");
+
+    for (exports.functions[0..exports.count]) |func| {
+        out.print("  ");
+        out.print(func.name);
+        out.print(" @ 0x");
+        out.printHex(func.address);
+        out.print(" (size: ");
+        out.printHex(func.size);
+        out.print(", binding: ");
+        switch (func.binding) {
+            STB_LOCAL => out.print("LOCAL"),
+            STB_GLOBAL => out.print("GLOBAL"),
+            STB_WEAK => out.print("WEAK"),
+            else => out.print("UNKNOWN"),
+        }
+        out.println(")");
+    }
+}
+
+const ExportData = struct {
+    process: *proc.Process,
+    exports: FunctionExports,
+};
+
+pub fn loadElfWithExports(elf_data: []const u8) ?ExportData {
+    @setRuntimeSafety(false);
+
+    const process = loadElfProcess(elf_data) orelse {
+        out.println("Failed to load ELF process");
+        return null;
+    };
+
+    const elf_info = extractElfData(elf_data) orelse {
+        out.println("Failed to extract ELF data for exports");
+        return null;
+    };
+
+    const exports = extractExportedFunctions(elf_data, &elf_info) orelse {
+        out.println("Failed to extract exported functions");
+        return null;
+    };
+
+    return .{
+        .process = process,
+        .exports = exports,
+    };
 }
