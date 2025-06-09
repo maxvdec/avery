@@ -115,8 +115,6 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     // Initialize the terminal
     out.switchToGraphics(fbTerminal);
 
-    elf.elfTest();
-
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");
     out.println("Pre-Alpha Version: paph-0.02\n");
