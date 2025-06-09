@@ -44,11 +44,10 @@ void copyFile(const fs::path &diskPath, const std::string &fileName,
         return;
     }
 
-    std::string withoutLastComponent = path.substr(0, path.find_last_of("/\\"));
-    std::string lastComponent = path.substr(path.find_last_of("/\\") + 1);
-    std::string filePath = withoutLastComponent + "/" + fileName;
-    std::cout << filePath << std::endl;
-    std::ifstream sourceFile(path, std::ios::binary);
+    std::string filePath =
+        fileName; // Use fileName directly as the source file path
+    std::cout << "Source file path: " << filePath << std::endl;
+    std::ifstream sourceFile(filePath, std::ios::binary);
     if (!sourceFile) {
         std::cerr << "Error: Unable to open source file." << std::endl;
         return;
@@ -60,8 +59,10 @@ void copyFile(const fs::path &diskPath, const std::string &fileName,
         return;
     }
 
-    withoutLastComponent = fileName.substr(0, fileName.find_last_of("/\\"));
-    lastComponent = fileName.substr(fileName.find_last_of("/\\") + 1);
+    std::string withoutLastComponent =
+        fileName.substr(0, fileName.find_last_of("/\\"));
+    std::string lastComponent =
+        fileName.substr(fileName.find_last_of("/\\") + 1);
 
     uint32_t parentRegion =
         traverseDirectory(diskPath, withoutLastComponent, partitionIndex);
