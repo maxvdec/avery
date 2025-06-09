@@ -25,6 +25,7 @@ const vfs = @import("vfs");
 const tss = @import("tss");
 const process = @import("process");
 const kalloc = @import("kern_allocator");
+const elf = @import("elf");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -111,32 +112,10 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     var fbTerminal = alloc.store(terminal.FramebufferTerminal);
     fbTerminal.* = terminal.FramebufferTerminal.init(fb, fnt);
 
-    const proc_code = [_]u8{
-        // write(1, current_addr + 20, 14)
-        0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1         ; syscall: write
-        0xBB, 0x01, 0x00, 0x00, 0x00, // mov ebx, 1         ; fd: stdout
-        0xB9, 0x14, 0x00, 0x40, 0x00, // mov ecx, USER_SPACE_START + 20  ; message address
-        0xBA, 0x0E, 0x00, 0x00, 0x00, // mov edx, 14        ; length
-        0xCD, 0x80, // int 0x80           ; invoke syscall
-        0xEB, 0xFE, // jmp $              ; infinite loop
-        // Message at offset 20
-        'H',  'e',
-        'l',  'l',
-        'o',  ',',
-        ' ',  'W',
-        'o',  'r',
-        'l',  'd',
-        '!',  '\n',
-    };
-
     // Initialize the terminal
     out.switchToGraphics(fbTerminal);
 
-    const proc = process.Process.create_process(&proc_code) orelse {
-        out.println("Failed to create process.");
-        sys.panic("Process creation failed.");
-    };
-    proc.run();
+    elf.elfTest();
 
     out.println("The Avery Kernel");
     out.println("Created by Max Van den Eynde");

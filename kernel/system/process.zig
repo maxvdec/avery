@@ -100,7 +100,7 @@ pub const Process = struct {
         return vmm.USER_STACK_VADDR;
     }
 
-    pub fn create_process(code: []const u8) ?*Process {
+    pub fn createProcess(code: []const u8) ?*Process {
         @setRuntimeSafety(false);
         var proc = alloc.store(Process);
 
@@ -251,7 +251,7 @@ pub fn processTest() void {
         0xEB, 0xFE, // Infinite loop: jmp to the same instruction
     };
 
-    const proc = Process.create_process(&bytes) orelse {
+    const proc = Process.createProcess(&bytes) orelse {
         out.println("Failed to create process.");
         return;
     };
