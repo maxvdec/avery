@@ -15,3 +15,7 @@ tools/ionicfs/ionicfs
 tools/ionicfs/Makefile
 tools/ionicfs/.cache
 .DS_Store
+tools/arf/target
+tools/arf/Cargo.lock
+Cargo.lock
+target
