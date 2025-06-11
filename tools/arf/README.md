@@ -101,6 +101,7 @@ The Symbols Table is the table that contains all the symbols in the code, and wi
   * If the byte is `0x00`, the symbol is a **local** symbol. Should not be shared.
   * If the byte is `0x01`, the symbol is a **global** symbol. It's shared with the rest of files.
   * If the byte is `0x02`, the symbol is a **mixed** symbol. It's like a default implementation but as substitute if there's no present function in the context.
+* **The four following bytes indicate the address of the symbol**. Always relative to the offset
 
 ## The Libraries Table
 The Libraries Table is the table that indicates the different libraries linked to the executable. They can be of different types. Here's how to read them:

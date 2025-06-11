@@ -97,11 +97,11 @@ The Symbols Table is the table that contains all the symbols in the code, and wi
   * If the byte is `0x00`, the symbol is resolved completely. The following 4 bytes indicate the offset of the symbol.
   * If the byte is `0x01`, the symbol is not resolved. It should be resolved at linking. Mostly used in `.o` object files.
   * If the byte is `0x02`, the symbol should be merged with other ones that share name with it.
-* **The last byte indicates the type of symbol**
+* **The following byte indicates the type of symbol**
   * If the byte is `0x00`, the symbol is a **local** symbol. Should not be shared.
   * If the byte is `0x01`, the symbol is a **global** symbol. It's shared with the rest of files.
   * If the byte is `0x02`, the symbol is a **mixed** symbol. It's like a default implementation but as substitute if there's no present function in the context.
-
+* **The following byte indicates the offset where the symbol is**
 ## The Libraries Table
 The Libraries Table is the table that indicates the different libraries linked to the executable. They can be of different types. Here's how to read them:
 * **The first byte says we're talking about a library (`0xDD`)**
@@ -118,32 +118,14 @@ The Fix Table, is a table full of the errors or parts of the code, where the add
 
 ## The Requests Table
 The Requests Table is a table that says the requests of services that the executable wants from the machine or kernel. These are always resolved at runtime. You can read about them, including their codes [here](kernext.md).
-Basically you just read the bytes and do nothing with them until you get to a `0x0` byte. If you want to match the bytes to a name to display information, read the document.
+Basically you just read the bytes and do nothing with them until you get to a `0x0` byte. If you want to match the bytes to a name to display information, read the document. They start with `0xBB` for clarification. Once you read a `0xFF`, then the data section starts.
 
 # How to configure the output of an executable
 To configure the output of an executable, we can use different tools. One is the `.ad` file extension. Called the **Avery Descriptor**. This format follows a simple pattern. Here's a simple script to put as an example:
 
 ```ad
-global.entry = 0x10000
-global.entryPoint = &start
-global.architecture = i386
-global.output = executable
-
-global.sections -> {
-    code @ 0x10000
-    bss @ 0x11000
-    otherSection @ 0x12000
-}
-
-global.libs -> {
-    avery(graphics)
-    avery(catamaran)
-    ../../other_lib.arl
-}
-
-global.kernelExtensions -> {
+[kernextensions]
     framebuffer
     console ; By default, this is incorporated. This is a "fast-loading" extension
     drives
-}
 ```
