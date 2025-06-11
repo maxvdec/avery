@@ -25,7 +25,6 @@ const vfs = @import("vfs");
 const tss = @import("tss");
 const process = @import("process");
 const kalloc = @import("kern_allocator");
-const elf = @import("elf");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -124,47 +123,4 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
         fbTerminal.updateCursor();
         sys.delay(16);
     }
-}
-
-// These functions are used by the syscall handler to print messages to the terminal.
-// They are sort of the services that the kernel provides to user programs.
-export fn kern_print(string: [*]const u8, len: usize) void {
-    out.println(string[0..len]);
-}
-
-export fn kern_writePath(buf: [*]const u8, len: usize, directory: [*]const u8, directoryLen: usize, partitionNumber: u32) u32 {
-    if (!vfs.fileExists(&fusion.getAtaController().master, directory[0..directoryLen], partitionNumber)) {
-        const result = vfs.createFile(&fusion.getAtaController().master, directory[0..directoryLen], partitionNumber);
-        if (result == null) {
-            return 1; // Failed to create file
-        }
-    }
-
-    const fileContents = vfs.readFile(&fusion.getAtaController().master, @intCast(partitionNumber), buf[0..len]);
-    if (fileContents == null) {
-        return 2; // Failed to read file
-    }
-    const joinedText = mem.joinBytes(u8, fileContents.?, buf[0..len]);
-    const result = vfs.writeToFile(&fusion.getAtaController().master, directory[0..directoryLen], joinedText, partitionNumber);
-    if (result == null) {
-        return 3; // Failed to write to file
-    }
-    return 0;
-}
-
-export fn kern_read(buf: [*]u8, len: usize, directory: [*]const u8, directoryLen: usize, partitionNumber: u32) u32 {
-    const fileContents = vfs.readFile(&fusion.getAtaController().master, @intCast(partitionNumber), directory[0..directoryLen]);
-    if (fileContents == null) {
-        return 1; // Failed to read file
-    }
-    const bytesToCopy = @min(len, fileContents.?.len);
-    _ = memcpy(buf, fileContents.?.ptr, bytesToCopy);
-    return bytesToCopy;
-}
-
-export fn kern_readStdin(buf: [*]u8, len: usize) u32 {
-    const input = in.readbytes(len);
-    const bytesToCopy = @min(len, input.len);
-    _ = memcpy(buf, input.ptr, bytesToCopy);
-    return bytesToCopy;
 }

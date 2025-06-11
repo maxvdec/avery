@@ -10,7 +10,6 @@ const ata = @import("ata");
 const vfs = @import("vfs");
 const rtc = @import("rtc");
 const path = @import("path");
-const elf = @import("elf");
 
 fn printMemory(memMap: multiboot2.MemoryMapTag) void {
     @setRuntimeSafety(false);
@@ -316,13 +315,12 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                     lastExitCode = 1;
                     continue;
                 }
-                const proc = elf.loadElfProcess(file.?);
-                if (proc == null) {
-                    out.println("Failed to load ELF file");
-                    lastExitCode = 1;
-                    continue;
-                }
-                proc.?.run();
+                // if (proc == null) {
+                //     out.println("Failed to load ELF file");
+                //     lastExitCode = 1;
+                //     continue;
+                // }
+                // proc.?.run();
 
                 lastExitCode = 0;
             }

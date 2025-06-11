@@ -8,10 +8,10 @@ use phf::phf_map;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Architecture {
-    X86 = 0,
-    X86_64 = 1,
-    ARMv7 = 2,
-    Aarch64 = 3,
+    X86 = 1,
+    X86_64 = 2,
+    ARMv7 = 3,
+    Aarch64 = 4,
 }
 
 impl From<Architecture> for u8 {
@@ -117,6 +117,7 @@ impl ArfFile {
         bytes.extend_from_slice(self.header.version_str.as_bytes());
         bytes.push(self.header.architecture as u8);
         bytes.push(self.header.host_architecture as u8);
+        bytes.extend_from_slice(&self.header.entry_point.to_le_bytes());
 
         // Sections table
         for section in self.sections.iter() {

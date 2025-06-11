@@ -21,3 +21,4 @@ Cargo.lock
 target
 tools/arf/tests/*
 !tools/arf/tests/*.asm
+tests/*.arf

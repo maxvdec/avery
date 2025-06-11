@@ -44,10 +44,18 @@ void removeFile(const fs::path &diskPath, const std::string &fileName,
         return;
     }
 
-    std::string withoutLastComponent =
-        fileName.substr(0, fileName.find_last_of("/\\"));
-    std::string lastComponent =
-        fileName.substr(fileName.find_last_of("/\\") + 1);
+    std::string withoutLastComponent;
+    std::string lastComponent;
+    size_t lastSlashPos = fileName.find_last_of("/\\");
+
+    if (lastSlashPos == std::string::npos) {
+        withoutLastComponent = "/";
+        lastComponent = fileName;
+    } else {
+        withoutLastComponent =
+            (lastSlashPos == 0) ? "/" : fileName.substr(0, lastSlashPos);
+        lastComponent = fileName.substr(lastSlashPos + 1);
+    }
     uint32_t parentRegion =
         traverseDirectory(diskPath, withoutLastComponent, partitionIndex);
     if (parentRegion == 0) {
