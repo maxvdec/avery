@@ -597,7 +597,7 @@ pub fn Stream(comptime T: type) type {
                 return null;
             }
 
-            return self.data[self.index..n];
+            return self.data[self.index .. self.index + n];
         }
 
         pub fn next(self: *Self) ?T {
@@ -616,9 +616,36 @@ pub fn Stream(comptime T: type) type {
                 return null;
             }
 
-            const data = self.data[self.index..n];
+            const data = self.data[self.index .. self.index + n];
             self.index += n; // Adjust n to be the end index
             return data;
+        }
+
+        pub fn getUntil(self: *Self, terminator: T) ?[]const T {
+            @setRuntimeSafety(false);
+            const start_index = self.index;
+            while (self.index < self.data.len) : (self.index += 1) {
+                if (self.data[self.index] == terminator) {
+                    return self.data[start_index..self.index];
+                }
+            }
+            return null; // Terminator not found
+        }
+
+        pub fn skip(self: *Self, n: usize) void {
+            @setRuntimeSafety(false);
+            if (self.index + n > self.data.len) {
+                sys.panic("Index out of bounds in Stream");
+            }
+            self.index += n;
+        }
+
+        pub fn goBack(self: *Self, n: usize) void {
+            @setRuntimeSafety(false);
+            if (self.index < n) {
+                sys.panic("Cannot go back beyond the start of the stream");
+            }
+            self.index -= n;
         }
     };
 }
@@ -889,4 +916,21 @@ pub inline fn getStackTop() usize {
 pub inline fn getStackBottom() usize {
     @setRuntimeSafety(false);
     return @intFromPtr(&stack_bottom);
+}
+pub fn append(comptime T: type, array: []T, elem: T) []T {
+    @setRuntimeSafety(false);
+    const new_len = array.len + 1;
+    const result = alloc.request(new_len * @sizeOf(T)) orelse {
+        sys.panic("Failed to allocate memory for append");
+    };
+
+    const new_array = @as([*]T, @alignCast(@ptrCast(result)));
+
+    for (0..array.len) |i| {
+        new_array[i] = array[i];
+    }
+
+    new_array[array.len] = elem;
+
+    return new_array[0..new_len];
 }
