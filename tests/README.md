@@ -6,4 +6,4 @@ First, you must compile them for the architecture you want (make sure Avery supp
 ```
 arf myElf -o myArf.arf -d theTestDescriptor.ad
 ```
-Make sure to compile the files with their corresponding description file. When compiling them, make sure the **entry point** is `main` (`-e main`)
+Make sure to compile the files with their corresponding description file. When compiling them, make sure the **entry point** is `main` (`-e main`). Also, to ensure the best compatibility, add this flag: `-Ttext=0x400000`. This will ensure that the entry address if `0x400000` since that is the default entry address.
