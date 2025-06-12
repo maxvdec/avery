@@ -25,10 +25,10 @@ impl TryFrom<u8> for Architecture {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(Architecture::X86),
-            1 => Ok(Architecture::X86_64),
-            2 => Ok(Architecture::ARMv7),
-            3 => Ok(Architecture::Aarch64),
+            1 => Ok(Architecture::X86),
+            2 => Ok(Architecture::X86_64),
+            3 => Ok(Architecture::ARMv7),
+            4 => Ok(Architecture::Aarch64),
             _ => Err("Invalid architecture value"),
         }
     }
@@ -62,6 +62,7 @@ pub struct Symbol {
 pub struct Library {
     name: String,
     availability: u8,
+    path: Option<String>,
 }
 
 #[derive(Debug)]
@@ -105,7 +106,7 @@ impl Default for ArfFile {
             symbols: Vec::new(),
             libraries: Vec::new(),
             fixes: Vec::new(),
-            requests: Vec::new(),
+            requests: vec![Request { byte: 0x0 }],
             data: Vec::new(),
         }
     }
@@ -165,15 +166,198 @@ impl ArfFile {
         bytes.extend_from_slice(&self.data);
         return bytes;
     }
+
+    pub fn from_data(data: Vec<u8>) -> Self {
+        let mut arf_file = ArfFile::default();
+        let mut offset = 0;
+
+        // Read header
+        arf_file.header.version_str = String::from_utf8(data[offset..offset + 6].to_vec()).unwrap();
+        offset += 6;
+        arf_file.header.architecture = Architecture::try_from(data[offset]).unwrap();
+        offset += 1;
+        arf_file.header.host_architecture = Architecture::try_from(data[offset]).unwrap();
+        offset += 1;
+        arf_file.header.entry_point =
+            u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+        offset += 4;
+
+        // Read sections
+        while data[offset] == 0xFF {
+            offset += 1; // Skip section type byte
+            let name_end = data[offset..].iter().position(|&b| b == 0).unwrap() + offset;
+            let name = String::from_utf8(data[offset..name_end].to_vec()).unwrap();
+            offset = name_end + 1; // Skip null terminator
+            let section_offset = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+            offset += 4;
+            let permissions = data[offset];
+            offset += 1;
+
+            arf_file.sections.push(Section {
+                name,
+                offset: section_offset,
+                permissions,
+            });
+        }
+
+        while data[offset] == 0xEE {
+            offset += 1; // Skip symbol type byte
+            let name_end = data[offset..].iter().position(|&b| b == 0).unwrap() + offset;
+            let name = String::from_utf8(data[offset..name_end].to_vec()).unwrap();
+            offset = name_end + 1; // Skip null terminator
+            let resolution = data[offset];
+            offset += 1;
+            let typ = data[offset];
+            offset += 1;
+            let addr = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+            offset += 4;
+
+            arf_file.symbols.push(Symbol {
+                name,
+                resolution,
+                typ,
+                addr,
+            });
+        }
+
+        while data[offset] == 0xDD {
+            offset += 1; // Skip library type byte
+            let name_end = data[offset..].iter().position(|&b| b == 0).unwrap() + offset;
+            let name = String::from_utf8(data[offset..name_end].to_vec()).unwrap();
+            offset = name_end + 1; // Skip null terminator
+            let availability = data[offset];
+            offset += 1;
+
+            let mut path = None;
+            if availability == 0xFF {
+                let path_end = data[offset..].iter().position(|&b| b == 0).unwrap() + offset;
+                path = if path_end > offset {
+                    Some(String::from_utf8(data[offset..path_end].to_vec()).unwrap())
+                } else {
+                    None
+                };
+                offset = path_end + 1; // Skip null terminator
+            }
+
+            arf_file.libraries.push(Library {
+                name,
+                availability,
+                path,
+            });
+        }
+
+        while data[offset] == 0xCC {
+            offset += 1; // Skip fix type byte
+            let name_end = data[offset..].iter().position(|&b| b == 0).unwrap() + offset;
+            let name = String::from_utf8(data[offset..name_end].to_vec()).unwrap();
+            offset = name_end + 1; // Skip null terminator
+            let fix_offset = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+            offset += 4;
+
+            arf_file.fixes.push(Fix {
+                name,
+                offset: fix_offset,
+            });
+        }
+
+        if data[offset] == 0xBB {
+            offset += 1;
+        }
+        while data[offset] != 0xFF {
+            println!("Request byte: {:02X}", data[offset]);
+            arf_file.requests.push(Request { byte: data[offset] });
+            offset += 1;
+        }
+
+        offset += 1; // Skip data type byte
+        let data_start = offset;
+        let data_end = data[data_start..]
+            .iter()
+            .position(|&b| b == 0xFF)
+            .unwrap_or(data.len() - data_start)
+            + data_start;
+        arf_file.data = data[data_start..data_end].to_vec();
+        offset = data_end;
+        if offset < data.len() {
+            panic!("Unexpected data after ARF file content");
+        }
+        arf_file.header.library = arf_file.header.version_str.starts_with("ARL");
+        arf_file.header.version_str = if arf_file.header.library {
+            "ARL002".to_string()
+        } else {
+            "ARF002".to_string()
+        };
+
+        return arf_file;
+    }
+
+    pub fn print_info(self: &ArfFile) {
+        println!("ARF File Info:");
+        println!("Version: {}", self.header.version_str);
+        println!("Library: {}", self.header.library);
+        println!("Architecture: {:?}", self.header.architecture);
+        println!("Host Architecture: {:?}", self.header.host_architecture);
+        println!("Entry Point: 0x{:X}", self.header.entry_point);
+
+        println!("\nSections:");
+        for section in &self.sections {
+            println!(
+                "  Name: {}, Offset: 0x{:X}, Permissions: {:02X}",
+                section.name, section.offset, section.permissions
+            );
+        }
+
+        println!("\nSymbols:");
+        for symbol in &self.symbols {
+            println!(
+                "  Name: {}, Resolution: {}, Type: {}, Address: 0x{:X}",
+                symbol.name, symbol.resolution, symbol.typ, symbol.addr
+            );
+        }
+
+        println!("\nLibraries:");
+        for library in &self.libraries {
+            println!(
+                "  Name: {}, Availability: {}, Path: {:?}",
+                library.name, library.availability, library.path
+            );
+        }
+
+        println!("\nFixes:");
+        for fix in &self.fixes {
+            println!("  Name: {}, Offset: 0x{:X}", fix.name, fix.offset);
+        }
+
+        println!("\nRequests:");
+        for request in &self.requests {
+            println!(
+                "  Extension: {}",
+                EXTENSIONS
+                    .entries()
+                    .find_map(|(key, &val)| if val == request.byte { Some(key) } else { None })
+                    .unwrap_or(&"unknown")
+            );
+        }
+
+        println!("\nData Size: {} bytes", self.data.len());
+    }
+
+    pub fn add_library(&mut self, name: &str, path: &str) {
+        self.libraries.push(Library {
+            name: name.to_string(),
+            availability: 0xFF, // Assuming 0xFF means available
+            path: Some(path.to_string()),
+        });
+    }
 }
 
 pub fn get_arf_file(library: bool, bytes: Vec<u8>, descriptor_file: Option<&str>) -> ArfFile {
     let mut arf_file = ArfFile::default();
     if !library {
-        arf_file.header.version_str = "ARF001".to_string();
+        arf_file.header.version_str = "ARF002".to_string();
         arf_file.header.library = false;
     } else {
-        arf_file.header.version_str = "ARL001".to_string();
+        arf_file.header.version_str = "ARL002".to_string();
         arf_file.header.library = true;
     }
 
@@ -356,6 +540,7 @@ fn get_libraries(elf: &ElfBytes<AnyEndian>) -> Vec<Library> {
                     libraries.push(Library {
                         name: lib_name,
                         availability: 0,
+                        path: None,
                     });
                 }
             }
