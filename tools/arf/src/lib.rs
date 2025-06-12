@@ -90,6 +90,7 @@ pub struct ArfFile {
 #[derive(Debug)]
 pub struct ArfDescriptionFile {
     extensions: Vec<u8>,
+    library: bool,
 }
 
 impl Default for ArfFile {
@@ -390,6 +391,12 @@ pub fn get_arf_file(library: bool, bytes: Vec<u8>, descriptor_file: Option<&str>
             .iter()
             .map(|&ext| Request { byte: ext })
             .collect();
+        arf_file.header.library = parse_ad_file(descriptor_file.unwrap()).library;
+        if arf_file.header.library {
+            arf_file.header.version_str = "ARL002".to_string();
+        } else {
+            arf_file.header.version_str = "ARF002".to_string();
+        }
     }
 
     return arf_file;
@@ -405,9 +412,14 @@ pub fn parse_ad_file(file_path: &str) -> ArfDescriptionFile {
     let str = std::fs::read_to_string(file_path)
         .unwrap_or_else(|_| panic!("Failed to read file: {}", file_path));
     let mut extensions = Vec::new();
+    let mut library = false;
     for line in str.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with(';') || line == "[kernextensions]" {
+            continue;
+        }
+        if line == "[library]" {
+            library = true;
             continue;
         }
         if let Some(&ext) = EXTENSIONS.get(line) {
@@ -417,7 +429,10 @@ pub fn parse_ad_file(file_path: &str) -> ArfDescriptionFile {
         }
     }
 
-    return ArfDescriptionFile { extensions };
+    return ArfDescriptionFile {
+        extensions,
+        library,
+    };
 }
 
 pub fn get_sections_table(elf: &ElfBytes<'_, AnyEndian>) -> Vec<Section> {
