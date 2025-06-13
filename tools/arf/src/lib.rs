@@ -156,9 +156,9 @@ impl ArfFile {
             bytes.extend_from_slice(&fix.offset.to_le_bytes());
         }
 
+        bytes.push(0xBB);
         // Requests table
         for request in self.requests.iter() {
-            bytes.push(0xBB);
             bytes.push(request.byte);
         }
 

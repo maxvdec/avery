@@ -3,8 +3,9 @@ The Avery Relocatable Format is a format for executing relocatable instructions,
 
 ## Tooling
 We offer tooling for dealing with ARF files, although it's a **one way** translation.<br>
-* `arf something.elf -d descriptor.ad` will transform an ELF file to ARF.
-* `ald object1.o object2.o object3.o` will link objects into an ARF. (This second one is not implemented but we pretend to do it)
+* `arf translate something.elf -o something.arf -d descriptor.ad` will transform an ELF file to ARF.
+* `arf info somthing.arf`
+* `arf addlib something.arf ALibrary /Libraries`
 
 ## The Header
 The Header tells us about the most important parts of the executable:
