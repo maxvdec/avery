@@ -316,7 +316,7 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                     lastExitCode = 1;
                     continue;
                 }
-                const proc = arf.createProcess(arf.loadExecutable(file.?));
+                const proc = arf.createProcess(arf.loadExecutable(file.?), &getAtaController().master);
                 if (proc == null) {
                     out.println("Failed to load ELF file");
                     lastExitCode = 1;

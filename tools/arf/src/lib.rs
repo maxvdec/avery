@@ -380,7 +380,7 @@ pub fn get_arf_file(library: bool, bytes: Vec<u8>, descriptor_file: Option<&str>
     arf_file.header.entry_point = elf.ehdr.e_entry as u32;
 
     arf_file.sections = get_sections_table(&elf);
-    arf_file.symbols = get_symbols(&elf);
+    arf_file.symbols = get_symbols(&elf, &arf_file);
     arf_file.libraries = get_libraries(&elf);
     arf_file.fixes = get_fixes(&elf);
     arf_file.data = extract_section_data(&elf);
@@ -477,7 +477,7 @@ pub fn get_sections_table(elf: &ElfBytes<'_, AnyEndian>) -> Vec<Section> {
     return sections;
 }
 
-pub fn get_symbols(elf: &ElfBytes<'_, AnyEndian>) -> Vec<Symbol> {
+pub fn get_symbols(elf: &ElfBytes<'_, AnyEndian>, executable: &ArfFile) -> Vec<Symbol> {
     let (symbol_table, symbol_str) = elf.symbol_table().unwrap().unwrap();
 
     let mut symbols_vec: Vec<Symbol> = Vec::new();
@@ -505,11 +505,27 @@ pub fn get_symbols(elf: &ElfBytes<'_, AnyEndian>) -> Vec<Symbol> {
             _ => 0,
         };
 
+        let (_, sections_str) = elf.section_headers_with_strtab().unwrap();
+        let string_ind = symbol.st_shndx as usize;
+        let str = sections_str
+            .unwrap()
+            .get(string_ind)
+            .unwrap_or("<no section>");
+        let section_offset = if str.is_empty() {
+            0
+        } else {
+            executable
+                .sections
+                .iter()
+                .find(|s| s.name == str)
+                .map_or(0, |s| s.offset)
+        };
+
         symbols_vec.push(Symbol {
             name: name.to_string(),
-            resolution: resolution,
+            resolution,
             typ: symbol_typ,
-            addr: symbol.st_value as u32,
+            addr: (symbol.st_value as u32) + section_offset,
         });
     }
 

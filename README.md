@@ -12,17 +12,21 @@ The Avery Kernel is a versatile, fast, and modern kernel written in Zig for the 
 ## Roadmap (To Alpha)
 I expect to add some things to this kernel before droping an alpha:
 
-- [ ] Simple Graphics Library *(Catamaran)*
 - [x] Drivers for basic file systems *(FAT32, VFS)*
 - [ ] Simple USB Capabilties
 - [ ] Audio Support
 - [ ] A new shell *(Fusion)*
 - [ ] Networking capabilities
 - [x] User and Kernel Space 
-- [ ] Executable execution **Work in progress**
+- [x] Executable execution
 - [ ] Custom bootloader *(Rouge)*
 - [ ] System Calls **Work in progress**
 - [ ] Support for more architectures
+- [ ] Add support for driver management
+- [ ] Create a standard library (libc)
+- [ ] Add process schedueling
+- [ ] Support multi-threading
+- [ ] Support multiple process executing at the same time
 
 Then, We will expand the kernel to add more functionalities until make Avery, the modern successor of Linux.
 

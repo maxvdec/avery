@@ -3,6 +3,9 @@ const proc = @import("process");
 const out = @import("output");
 const vmm = @import("virtual_mem");
 const kalloc = @import("kern_allocator");
+const ata = @import("ata");
+const pathfn = @import("path");
+const fs = @import("vfs");
 
 pub const Architecture = enum(u8) {
     i386 = 1,
@@ -51,6 +54,7 @@ pub const Library = struct {
     name: []const u8,
     visibility: u8,
     loadedAt: usize = 0,
+    path: []const u8,
 };
 
 pub const Fix = struct {
@@ -164,9 +168,15 @@ pub fn loadExecutable(data: []const u8) ?Executable {
         if (library_name.len == 0) {
             return null; // Invalid library data
         }
+
+        var library_path: []const u8 = "";
+        if (library_visibility == LIB_KERNEL) {
+            library_path = stream.getUntil(0x00).?;
+        }
         const library = Library{
             .name = library_name,
             .visibility = library_visibility,
+            .path = library_path,
         };
         exec.libraries = mem.append(Library, exec.libraries, library);
     }
@@ -191,7 +201,6 @@ pub fn loadExecutable(data: []const u8) ?Executable {
 
     while (true) {
         const extension = stream.get(1).?[0];
-        out.printHex(extension);
         if (extension == 0xFF) {
             break; // End of extensions
         }
@@ -203,33 +212,121 @@ pub fn loadExecutable(data: []const u8) ?Executable {
     return exec;
 }
 
-pub fn createProcess(executable: ?Executable) ?*proc.Process {
+pub fn createProcess(executable: ?Executable, disk: *ata.AtaDrive) ?*proc.Process {
     if (executable == null) {
         return null;
     }
 
-    const buffer = kalloc.requestKernel(executable.?.data.len) orelse {
-        out.println("Failed to allocate memory for executable data.");
+    const exec = executable.?;
+
+    var total_size: usize = exec.data.len;
+    var kernel_libraries = mem.Array([]const u8).init();
+
+    for (exec.libraries) |library| {
+        switch (library.visibility) {
+            LIB_RESOLVED => continue,
+            LIB_KERNEL => {
+                const libData = loadKernelLibrary(library.name, library.path, disk) orelse {
+                    out.print("Failed to load kernel library: ");
+                    out.println(library.name);
+                    return null;
+                };
+                kernel_libraries.append(libData);
+                total_size += libData.len;
+            },
+            else => continue,
+        }
+    }
+
+    const buffer = kalloc.requestKernel(total_size) orelse {
+        out.println("Failed to allocate memory for executable.");
         return null;
     };
 
-    for (0..executable.?.data.len) |i| {
-        buffer[i] = executable.?.data[i];
+    for (0..exec.data.len) |i| {
+        buffer[i] = exec.data[i];
     }
 
-    // var lastAddress = executable.?.data.len + executable.?.entryPoint + 1;
+    var current_offset = exec.data.len;
+    var libraryIndex: usize = 0;
 
-    // for (executable.?.libraries) |lib| {
-    //     switch (lib.visibility) {
-    //         LIB_RESOLVED => continue,
-    //         LIB_KERNEL => {
-    //             // We need to load the kernel library
-    //         },
-    //     }
-    // }
+    for (exec.libraries) |lib| {
+        switch (lib.visibility) {
+            LIB_RESOLVED => continue,
+            LIB_KERNEL => {
+                const libData = kernel_libraries.get(libraryIndex).?;
+                libraryIndex += 1;
 
-    const process = proc.Process.createProcess(buffer[0..executable.?.data.len]).?;
+                for (0..libData.len) |i| {
+                    buffer[current_offset + i] = libData[i];
+                }
+
+                const libExecutable = loadExecutable(libData);
+                if (libExecutable) |libExec| {
+                    updateSymbolsForLibrary(buffer[0..total_size], exec, current_offset, libExec);
+                }
+
+                current_offset += libData.len;
+            },
+            else => continue,
+        }
+    }
+
+    const process = proc.Process.createProcess(buffer[0..total_size]).?;
     return process;
+}
+
+fn updateSymbolsForLibrary(buffer: []u8, exec: Executable, libOffset: usize, libExec: Executable) void {
+    for (exec.symbols) |symbol| {
+        if (symbol.resolution == SYM_UNRESOLVED) {
+            for (libExec.symbols) |libSymbol| {
+                if (mem.compareBytes(u8, symbol.name, libSymbol.name) and
+                    libSymbol.resolution == SYM_RESOLVED)
+                {
+                    const actualAddress = libOffset + libSymbol.offset;
+
+                    const addressBytes = mem.reinterpretToBytes(u32, @as(u32, @intCast(actualAddress)));
+                    for (0..4) |i| {
+                        if (symbol.offset + i < exec.data.len) {
+                            buffer[symbol.offset + i] = addressBytes[i];
+                        }
+                    }
+
+                    break;
+                }
+            }
+        }
+    }
+
+    for (exec.fixes) |fix| {
+        for (libExec.symbols) |libSymbol| {
+            if (mem.compareBytes(u8, fix.name, libSymbol.name) and
+                libSymbol.resolution == SYM_RESOLVED)
+            {
+                const actualAddress = libOffset + libSymbol.offset;
+                const addressBytes = mem.reinterpretToBytes(u32, @as(u32, @intCast(actualAddress)));
+
+                for (0..4) |i| {
+                    if (fix.offset + i < exec.data.len) {
+                        buffer[fix.offset + i] = addressBytes[i];
+                    }
+                }
+
+                break;
+            }
+        }
+    }
+}
+
+fn loadKernelLibrary(name: []const u8, path: []const u8, disk: *ata.AtaDrive) ?[]const u8 {
+    @setRuntimeSafety(false);
+    const full_path = pathfn.joinPaths(path, mem.joinBytes(u8, "./", name));
+    const file = fs.readFile(disk, 0, full_path) orelse {
+        out.print("Failed to open kernel library: ");
+        out.println(name);
+        return null;
+    };
+    return file;
 }
 
 pub fn printArchitecture(arch: Architecture) void {
