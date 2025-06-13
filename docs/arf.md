@@ -1,10 +1,11 @@
-# The Avery Relocatable Format (ARF) 
+# The Avery Relocatable Format (ARF) - 0.0.2 
 The Avery Relocatable Format is a format for executing relocatable instructions, meaning that it can be loaded in memory in any place, since it does not use any type of hard-coded addresses. It's a successor to ELF in its sense of simplicity and it's tailored for the Avery Kernel.
 
 ## Tooling
 We offer tooling for dealing with ARF files, although it's a **one way** translation.<br>
-* `arf something.elf -d descriptor.ad` will transform an ELF file to ARF.
-* `ald object1.o object2.o object3.o` will link objects into an ARF. (This second one is not implemented but we pretend to do it)
+* `arf translate something.elf -o something.arf -d descriptor.ad` will transform an ELF file to ARF.
+* `arf info somthing.arf`
+* `arf addlib something.arf ALibrary /Libraries`
 
 ## The Header
 The Header tells us about the most important parts of the executable:
@@ -109,6 +110,7 @@ The Libraries Table is the table that indicates the different libraries linked t
 * **Then it comes the availability byte**
   * If the byte is `0x00`, the library and linked should be **resolved at compile-time**. This is the default
   * Some libraries, specified in the configuration linking file, are resolved at **runtime** by the kernel. This is when the byte is `0xFF`
+* **If the library has to be resolved at runtime, the library path will be written after as a null-terminated string**
 
 ## The Fix Table
 The Fix Table, is a table full of the errors or parts of the code, where the addresses are callibrated wriong, since there's some undefined symbol or something. This table is extensive or not, depending on how many libraries you link.

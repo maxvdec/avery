@@ -371,31 +371,37 @@ pub fn mapUserPage(pd: PageDirectory, virt: usize, phys: usize, flags: u32) void
     invlpg(virt);
 }
 
-pub fn tempMap(phys: usize) usize {
+pub fn tempMap(phys_start: usize, page_count: usize) usize {
     @setRuntimeSafety(false);
 
     const temp_virt_base: usize = 0x0FF00000;
-    const pd_index = getPageDirectoryIndex(temp_virt_base);
-    const pt_index = getPageTableIndex(temp_virt_base);
 
-    var pt: *[1024]u32 = undefined;
+    for (0..page_count) |i| {
+        const virt = temp_virt_base + i * 0x1000;
+        const phys = (phys_start & 0xFFFFF000) + i * 0x1000;
 
-    if ((page_directory[pd_index] & PAGE_PRESENT) == 0) {
-        const new_pt_phys = pmm.allocPage() orelse unreachable;
-        page_directory[pd_index] = new_pt_phys | PAGE_PRESENT | PAGE_RW;
+        const pd_index = getPageDirectoryIndex(virt);
+        const pt_index = getPageTableIndex(virt);
 
-        const pt_virt = new_pt_phys + KERNEL_MEM_BASE;
-        pt = @as(*[1024]u32, @ptrFromInt(pt_virt));
-        for (pt) |*e| e.* = 0;
-    } else {
-        const pt_phys = page_directory[pd_index] & 0xFFFFF000;
-        pt = @as(*[1024]u32, @ptrFromInt(pt_phys + KERNEL_MEM_BASE));
+        var pt: *[1024]u32 = undefined;
+
+        if ((page_directory[pd_index] & PAGE_PRESENT) == 0) {
+            const new_pt_phys = pmm.allocPage() orelse unreachable;
+            page_directory[pd_index] = new_pt_phys | PAGE_PRESENT | PAGE_RW;
+
+            const pt_virt = new_pt_phys + KERNEL_MEM_BASE;
+            pt = @as(*[1024]u32, @ptrFromInt(pt_virt));
+            for (pt) |*e| e.* = 0;
+        } else {
+            const pt_phys = page_directory[pd_index] & 0xFFFFF000;
+            pt = @as(*[1024]u32, @ptrFromInt(pt_phys + KERNEL_MEM_BASE));
+        }
+
+        pt[pt_index] = phys | PAGE_PRESENT | PAGE_RW;
+        invlpg(virt);
     }
 
-    pt[pt_index] = (phys & 0xFFFFF000) | PAGE_PRESENT | PAGE_RW;
-    invlpg(temp_virt_base);
-
-    return temp_virt_base + (phys & 0xFFF);
+    return temp_virt_base + (phys_start & 0xFFF);
 }
 
 pub fn tempUnmap(virt: usize) void {

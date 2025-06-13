@@ -1,6 +1,8 @@
 const mem = @import("memory");
 const proc = @import("process");
 const out = @import("output");
+const vmm = @import("virtual_mem");
+const kalloc = @import("kern_allocator");
 
 pub const Architecture = enum(u8) {
     i386 = 1,
@@ -48,6 +50,7 @@ const LIB_KERNEL = 0xFF;
 pub const Library = struct {
     name: []const u8,
     visibility: u8,
+    loadedAt: usize = 0,
 };
 
 pub const Fix = struct {
@@ -55,9 +58,10 @@ pub const Fix = struct {
     offset: usize,
 };
 
-pub const Executable = struct { header: Header, sections: []Section, symbols: []Symbol, libraries: []Library, fixes: []Fix, entryPoint: usize, extensions: []u8, library: bool };
+pub const Executable = struct { header: Header, sections: []Section, symbols: []Symbol, libraries: []Library, fixes: []Fix, entryPoint: usize, extensions: []u8, library: bool, data: []const u8, fileSize: usize };
 
 pub fn loadExecutable(data: []const u8) ?Executable {
+    @setRuntimeSafety(false);
     var exec = Executable{
         .header = Header{
             .version = "ARF 0.1.0",
@@ -71,6 +75,8 @@ pub fn loadExecutable(data: []const u8) ?Executable {
         .entryPoint = 0,
         .extensions = &.{},
         .library = false,
+        .data = &.{},
+        .fileSize = data.len,
     };
 
     // Parse the header
@@ -185,13 +191,45 @@ pub fn loadExecutable(data: []const u8) ?Executable {
 
     while (true) {
         const extension = stream.get(1).?[0];
+        out.printHex(extension);
         if (extension == 0xFF) {
             break; // End of extensions
         }
         exec.extensions = mem.append(u8, exec.extensions, extension);
     }
 
+    exec.data = stream.getRemaining();
+
     return exec;
+}
+
+pub fn createProcess(executable: ?Executable) ?*proc.Process {
+    if (executable == null) {
+        return null;
+    }
+
+    const buffer = kalloc.requestKernel(executable.?.data.len) orelse {
+        out.println("Failed to allocate memory for executable data.");
+        return null;
+    };
+
+    for (0..executable.?.data.len) |i| {
+        buffer[i] = executable.?.data[i];
+    }
+
+    // var lastAddress = executable.?.data.len + executable.?.entryPoint + 1;
+
+    // for (executable.?.libraries) |lib| {
+    //     switch (lib.visibility) {
+    //         LIB_RESOLVED => continue,
+    //         LIB_KERNEL => {
+    //             // We need to load the kernel library
+    //         },
+    //     }
+    // }
+
+    const process = proc.Process.createProcess(buffer[0..executable.?.data.len]).?;
+    return process;
 }
 
 pub fn printArchitecture(arch: Architecture) void {
@@ -211,7 +249,11 @@ pub fn printInformation(executable: ?Executable) void {
         return;
     }
     out.println("Executable Information:");
-    out.println("This is an ARF executable.");
+    if (executable.?.library) {
+        out.println("This is an ARL library.");
+    } else {
+        out.println("This is an ARF executable.");
+    }
     out.print("Version: ");
     out.println(executable.?.header.version);
     out.print("Library: ");
@@ -226,6 +268,9 @@ pub fn printInformation(executable: ?Executable) void {
     out.print("Entry Point: ");
     out.printHex(@as(u32, executable.?.entryPoint));
     out.println("");
+    if (executable.?.entryPoint != vmm.USER_CODE_VADDR) {
+        out.println("Warning: The entry point is not the standard for Avery. Try 0x400000");
+    }
     out.println("===== Sections =====");
     for (executable.?.sections) |section| {
         out.print("Name: ");

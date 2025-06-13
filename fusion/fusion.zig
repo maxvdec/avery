@@ -316,12 +316,13 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                     lastExitCode = 1;
                     continue;
                 }
-                // if (proc == null) {
-                //     out.println("Failed to load ELF file");
-                //     lastExitCode = 1;
-                //     continue;
-                // }
-                // proc.?.run();
+                const proc = arf.createProcess(arf.loadExecutable(file.?));
+                if (proc == null) {
+                    out.println("Failed to load ELF file");
+                    lastExitCode = 1;
+                    continue;
+                }
+                proc.?.run();
 
                 lastExitCode = 0;
             }

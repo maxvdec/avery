@@ -124,7 +124,7 @@ pub const Process = struct {
             return null;
         };
 
-        const code_vaddr = vmm.tempMap(code_paddr);
+        const code_vaddr = vmm.tempMap(code_paddr, code_pages);
 
         _ = memcpy(@ptrFromInt(code_vaddr), code.ptr, code.len);
 

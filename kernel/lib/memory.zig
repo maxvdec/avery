@@ -647,6 +647,14 @@ pub fn Stream(comptime T: type) type {
             }
             self.index -= n;
         }
+
+        pub fn getRemaining(self: *Self) []const T {
+            @setRuntimeSafety(false);
+            if (self.index >= self.data.len) {
+                return &[_]T{};
+            }
+            return self.data[self.index..];
+        }
     };
 }
 
