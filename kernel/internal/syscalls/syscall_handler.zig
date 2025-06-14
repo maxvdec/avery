@@ -40,18 +40,18 @@ export fn syscall_handler(
     const extensions = @as(*ext.KernelExtensions, @ptrFromInt(kernel_extensions));
     out.initOutputs();
     out.switchToSerial();
-    const term: *terminal.FramebufferTerminal = @as(*terminal.FramebufferTerminal, @ptrFromInt(extensions.framebufferTerminal));
-    term.putString("Hello, World!");
+    out.print("Syscall number: ");
+    out.printn(syscall_number);
     switch (syscall_number) {
         0 => return read(arg1, arg2, arg3, arg4, arg5),
-        1 => return write(arg1, arg2, arg3, arg4, arg5),
+        1 => return write(arg1, arg2, arg3, arg4, arg5, extensions),
         2 => return open(arg1, arg2, arg3, arg4, arg5),
         3 => return close(arg1, arg2, arg3, arg4, arg5),
         else => return 0,
     }
 }
 
-fn write(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32) u64 {
+fn write(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
     const ptr: [*]const u8 = @ptrFromInt(arg2);
     const len = arg3;
     const fd = arg1;
@@ -65,7 +65,18 @@ fn write(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32) u64 {
         return INVALID_FD;
     }
 
-    _ = ptr + len; // Prevent unused variable warning
+    switch (fd) {
+        1 => {
+            if (extensions.framebufferTerminal != 0) {
+                const term = @as(*terminal.FramebufferTerminal, @ptrFromInt(extensions.framebufferTerminal));
+                term.putString(ptr[0..len]);
+            } else {
+                out.switchToSerial();
+                out.print(ptr[0..len]);
+            }
+        },
+        else => return INVALID_FD,
+    }
     return SUCCESS;
 }
 

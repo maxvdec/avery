@@ -100,7 +100,7 @@ pub const Process = struct {
         return vmm.USER_STACK_VADDR;
     }
 
-    pub fn createProcess(code: []const u8) ?*Process {
+    pub fn createProcess(code: []const u8, loadAt: usize) ?*Process {
         @setRuntimeSafety(false);
         var proc = alloc.store(Process);
 
@@ -128,20 +128,22 @@ pub const Process = struct {
 
         _ = memcpy(@ptrFromInt(code_vaddr), code.ptr, code.len);
 
+        const real_addr = if (loadAt != 0) loadAt else vmm.USER_CODE_VADDR;
+
         for (0..code_pages) |i| {
-            const vaddr = vmm.USER_CODE_VADDR + (i * vmm.PAGE_SIZE);
+            const vaddr = real_addr + (i * vmm.PAGE_SIZE);
             const paddr = code_paddr + (i * vmm.PAGE_SIZE);
 
             vmm.mapUserPage(proc.page_dir, vaddr, paddr, vmm.PAGE_PRESENT | vmm.PAGE_RW | vmm.PAGE_USER);
         }
 
-        proc.code_base = vmm.USER_CODE_VADDR;
+        proc.code_base = real_addr;
 
         const stack_top = proc.setupStack();
 
         proc.context = ProcessContext{};
 
-        proc.context.eip = vmm.USER_CODE_VADDR;
+        proc.context.eip = proc.code_base;
         proc.context.esp = stack_top;
         proc.context.eflags = 0x202; // Set IF (Interrupt Flag) to enable interrupts
 
@@ -155,6 +157,7 @@ pub const Process = struct {
         var kernel_ext = kalloc.storeKernel(ext.KernelExtensions);
         kernel_ext.* = .{};
         kernel_ext.requestTerminal();
+        kernel_ext.addProcess(proc);
 
         proc.kernel_extensions = kernel_ext;
         proc.kernel_extensions_addr = @intFromPtr(kernel_ext);
@@ -162,6 +165,7 @@ pub const Process = struct {
         process_list.append(proc);
 
         vmm.tempUnmap(code_vaddr);
+
         return proc;
     }
 
@@ -199,6 +203,50 @@ pub const Process = struct {
             self.context.ss,
             self.page_dir.physical,
         );
+    }
+
+    pub fn terminate(self: *Process) void {
+        @setRuntimeSafety(false);
+
+        self.state = ProcessState.Terminated;
+
+        self.cleanup();
+
+        const data = process_list.coerce();
+        for (data) |*proc| {
+            if (proc.pid == self.pid) {
+                process_list.remove(proc);
+                break;
+            }
+        }
+
+        if (current_process != null and current_process.?.pid == self.pid) {
+            const fallback = createFallbackProcess();
+            current_process = fallback orelse {
+                out.println("Failed to create fallback process.");
+                return;
+            };
+            fallback.?.run();
+        }
+    }
+
+    pub fn cleanup(self: *Process) void {
+        @setRuntimeSafety(false);
+
+        if (self.page_dir.physical != 0) {
+            vmm.destroyPageDirectory(self.page_dir);
+        }
+
+        if (self.kernel_extensions != null) {
+            kalloc.freeKernel(self.kernel_extensions);
+        }
+
+        if (self.code_base != 0) {
+            const code_pages = (self.code_size + vmm.PAGE_SIZE - 1) / vmm.PAGE_SIZE;
+            const code_paddr = vmm.tempMap(self.code_base, code_pages);
+            pmm.freePages(code_paddr, code_pages);
+            vmm.tempUnmap(self.code_base);
+        }
     }
 
     pub fn debugProcessContext(ctx: *ProcessContext) void {
@@ -251,10 +299,20 @@ pub fn processTest() void {
         0xEB, 0xFE, // Infinite loop: jmp to the same instruction
     };
 
-    const proc = Process.createProcess(&bytes) orelse {
+    const proc = Process.createProcess(&bytes, 0) orelse {
         out.println("Failed to create process.");
         return;
     };
 
     proc.run();
+}
+
+pub fn createFallbackProcess() ?*Process {
+    @setRuntimeSafety(false);
+
+    const bytes = [_]u8{
+        0xEB, 0xFE, // Infinite loop: jmp to the same instruction
+    };
+
+    return Process.createProcess(&bytes, 0);
 }

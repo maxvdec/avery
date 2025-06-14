@@ -381,6 +381,30 @@ pub fn Array(comptime T: type) type {
             if (self.ptr == null) return &[_]T{};
             return self.ptr.?[0..self.len];
         }
+
+        pub fn remove(self: *Self, index: usize) ?T {
+            @setRuntimeSafety(false);
+            if (index >= self.len) {
+                return null;
+            }
+            const value = self.ptr.?[index];
+            for (index + 1..self.len) |i| {
+                self.ptr.?[i - 1] = self.ptr.?[i];
+            }
+            self.len -= 1;
+            self.ptr.?[self.len] = undefined; // Clear the last element
+            return value;
+        }
+
+        pub fn removeWhere(self: *Self, predicate: fn (T) bool) ?T {
+            @setRuntimeSafety(false);
+            for (0..self.len) |i| {
+                if (predicate(self.ptr.?[i])) {
+                    return self.remove(i);
+                }
+            }
+            return null; // No element found
+        }
     };
 }
 

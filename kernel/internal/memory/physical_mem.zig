@@ -135,3 +135,10 @@ pub fn allocPages(count: usize) ?usize {
     }
     return pages[0];
 }
+
+pub fn freePages(addr: usize, count: usize) void {
+    @setRuntimeSafety(false);
+    for (0..count) |i| {
+        freePage(addr + i * PAGE_SIZE);
+    }
+}

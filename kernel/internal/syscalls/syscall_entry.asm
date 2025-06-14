@@ -1,7 +1,6 @@
 section .text
 global int80_handler
 extern syscall_handler
-
 int80_handler:
     push ds
     push es  
@@ -34,22 +33,26 @@ int80_handler:
     ; ESP + 60: User ESP (if privilege change)
     ; ESP + 64: User SS (if privilege change)
     
-    mov eax, [esp + 28]   
-    mov ebx, [esp + 16]   
-    mov ecx, [esp + 24]   
-    mov edx, [esp + 20]   
-    mov esi, [esp + 4]    
-    mov edi, [esp + 0]    
+    ; Load registers from correct stack positions
+    mov eax, [esp + 28]   ; EAX - syscall number
+    mov ebx, [esp + 16]   ; EBX - arg1
+    mov ecx, [esp + 24]   ; ECX - arg2  
+    mov edx, [esp + 20]   ; EDX - arg3
+    mov esi, [esp + 4]    ; ESI - arg4
+    mov edi, [esp + 0]    ; EDI - arg5
     
-    push edi              
-    push esi              
-    push edx              
-    push ecx              
-    push ebx              
-    push eax              
+    ; Push in REVERSE order for C calling convention
+    ; (last parameter pushed first)
+    push edi              ; arg5 (EDI)
+    push esi              ; arg4 (ESI)  
+    push edx              ; arg3 (EDX)
+    push ecx              ; arg2 (ECX)
+    push ebx              ; arg1 (EBX)
+    push eax              ; syscall_number (EAX)
     call syscall_handler
-    add esp, 24           
+    add esp, 24           ; Clean up 6 parameters * 4 bytes each
     
+    ; Store return value back to EAX on stack
     mov [esp + 28], eax  
     
     popa

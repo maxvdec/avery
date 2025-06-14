@@ -349,6 +349,22 @@ pub fn createUserPageDirectory() ?PageDirectory {
     };
 }
 
+pub fn destroyPageDirectory(pd: PageDirectory) void {
+    @setRuntimeSafety(false);
+    const pd_virtual = @as(*[1024]u32, @ptrFromInt(pd.virtual));
+
+    for (0..1024) |i| {
+        if ((pd_virtual[i] & PAGE_PRESENT) != 0) {
+            const pt_phys = pd_virtual[i] & 0xFFFFF000;
+            if (pt_phys != 0) {
+                pmm.freePage(pt_phys);
+            }
+        }
+    }
+
+    pmm.freePage(pd.physical);
+}
+
 pub fn mapUserPage(pd: PageDirectory, virt: usize, phys: usize, flags: u32) void {
     @setRuntimeSafety(false);
     const pd_index = (virt >> 22) & 0x3FF;

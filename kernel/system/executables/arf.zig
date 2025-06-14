@@ -62,7 +62,7 @@ pub const Fix = struct {
     offset: usize,
 };
 
-pub const Executable = struct { header: Header, sections: []Section, symbols: []Symbol, libraries: []Library, fixes: []Fix, entryPoint: usize, extensions: []u8, library: bool, data: []const u8, fileSize: usize };
+pub const Executable = struct { header: Header, sections: []Section, symbols: []Symbol, libraries: []Library, fixes: []Fix, entryPoint: usize, extensions: []u8, library: bool, data: []const u8, fileSize: usize, offsetEntryPoint: usize };
 
 pub fn loadExecutable(data: []const u8) ?Executable {
     @setRuntimeSafety(false);
@@ -81,6 +81,7 @@ pub fn loadExecutable(data: []const u8) ?Executable {
         .library = false,
         .data = &.{},
         .fileSize = data.len,
+        .offsetEntryPoint = 0,
     };
 
     // Parse the header
@@ -207,6 +208,17 @@ pub fn loadExecutable(data: []const u8) ?Executable {
         exec.extensions = mem.append(u8, exec.extensions, extension);
     }
 
+    var text_offset: usize = 0;
+    for (exec.sections) |section| {
+        if (section.permission & SEC_EXECUTE != 0) {
+            text_offset = section.offset;
+            break;
+        }
+    }
+
+    const final_entry_point = exec.entryPoint + text_offset;
+    exec.offsetEntryPoint = final_entry_point;
+
     exec.data = stream.getRemaining();
 
     return exec;
@@ -272,7 +284,7 @@ pub fn createProcess(executable: ?Executable, disk: *ata.AtaDrive) ?*proc.Proces
         }
     }
 
-    const process = proc.Process.createProcess(buffer[0..total_size]).?;
+    const process = proc.Process.createProcess(buffer[0..total_size], exec.offsetEntryPoint).?;
     return process;
 }
 
@@ -362,14 +374,27 @@ pub fn printInformation(executable: ?Executable) void {
     }
     out.print("Host Architecture: ");
     printArchitecture(executable.?.header.hostArchitecture);
-    out.print("Entry Point: ");
+    out.print("Raw Entry Point: ");
     out.printHex(@as(u32, executable.?.entryPoint));
     out.println("");
     if (executable.?.entryPoint != vmm.USER_CODE_VADDR) {
         out.println("Warning: The entry point is not the standard for Avery. Try 0x400000");
     }
+    out.print("Entry Point: ");
+    out.printHex(@as(u32, executable.?.offsetEntryPoint));
+    out.println("");
     out.println("===== Sections =====");
     for (executable.?.sections) |section| {
+        if (mem.startsWith(u8, section.name, "_")) {
+            continue;
+        }
+        if (mem.compareBytes(u8, section.name, ".symtab") or
+            mem.compareBytes(u8, section.name, ".strtab") or
+            mem.compareBytes(u8, section.name, ".shstrtab"))
+        {
+            continue; // Skip symbol tables and string tables
+
+        }
         out.print("Name: ");
         out.println(section.name);
         out.print("Offset: ");
@@ -380,6 +405,10 @@ pub fn printInformation(executable: ?Executable) void {
     }
     out.println("===== Symbols =====");
     for (executable.?.symbols) |symbol| {
+        if (mem.startsWith(u8, symbol.name, "_")) {
+            continue;
+        }
+
         out.print("Name: ");
         out.println(symbol.name);
         out.print("Resolution: ");
