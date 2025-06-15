@@ -25,6 +25,7 @@ const vfs = @import("vfs");
 const tss = @import("tss");
 const process = @import("process");
 const kalloc = @import("kern_allocator");
+const serial = @import("serial");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 

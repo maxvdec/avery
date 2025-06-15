@@ -8,7 +8,7 @@ main:
     mov edx, len
     int 0x80
 
-    jmp $
+    jmp main
 
 section .data
 msg db "Hello, ARF!", 0x0

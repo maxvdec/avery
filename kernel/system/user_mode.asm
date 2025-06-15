@@ -1,5 +1,6 @@
 global switch_to_user_mode
 switch_to_user_mode:
+    ; Stack layout when called:
     ; esp + 4  -> eax
     ; esp + 8  -> ebx  
     ; esp + 12 -> ecx
@@ -7,7 +8,7 @@ switch_to_user_mode:
     ; esp + 20 -> esi
     ; esp + 24 -> edi
     ; esp + 28 -> ebp
-    ; esp + 32 -> esp (stack) 
+    ; esp + 32 -> esp (user stack) 
     ; esp + 36 -> eip
     ; esp + 40 -> eflags
     ; esp + 44 -> cs
@@ -18,36 +19,50 @@ switch_to_user_mode:
     ; esp + 64 -> ss
     ; esp + 68 -> page_dir
     
-    mov eax, [esp + 64]   
-    mov ebx, [esp + 32]   
-    mov ecx, [esp + 40]   
-    mov edx, [esp + 44]   
-    mov esi, [esp + 36]   
+    cli
     
-    push eax              
-    push ebx              
-    push ecx              
-    push edx              
-    push esi              
+    mov eax, esp
     
-    mov ax, [esp + 68]
-    mov ds, ax
-    mov ax, [esp + 72]
-    mov es, ax
-    mov ax, [esp + 76]
-    mov fs, ax
-    mov ax, [esp + 80] 
-    mov gs, ax
+    mov ebx, [eax + 68]   
+    test ebx, ebx         
+    jz .error             
+    mov cr3, ebx
     
-    mov eax, [esp + 88]   
-    mov cr3, eax          
+    mov ebx, [eax + 64]   ; ss
+    push ebx
     
-    mov eax, [esp + 24]
-    mov ebx, [esp + 28]
-    mov ecx, [esp + 32]
-    mov edx, [esp + 36]
-    mov esi, [esp + 40]
-    mov edi, [esp + 44]
-    mov ebp, [esp + 48]
+    mov ebx, [eax + 32]   ; user esp
+    push ebx
+    
+    mov ebx, [eax + 40]   ; eflags
+    or ebx, 0x200         ; Set IF flag
+    push ebx
+    
+    mov ebx, [eax + 44]   ; cs
+    push ebx
+    
+    mov ebx, [eax + 36]   ; eip
+    push ebx
+    
+    mov bx, [eax + 48]    ; ds
+    mov ds, bx
+    mov bx, [eax + 52]    ; es
+    mov es, bx
+    mov bx, [eax + 56]    ; fs
+    mov fs, bx
+    mov bx, [eax + 60]    ; gs
+    mov gs, bx
+    
+    mov ebx, [eax + 8]    ; ebx
+    mov ecx, [eax + 12]   ; ecx  
+    mov edx, [eax + 16]   ; edx
+    mov esi, [eax + 20]   ; esi
+    mov edi, [eax + 24]   ; edi
+    mov ebp, [eax + 28]   ; ebp
+    mov eax, [eax + 4]    ; eax
     
     iret
+
+.error:
+    sti
+    ret

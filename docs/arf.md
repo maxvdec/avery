@@ -1,4 +1,4 @@
-# The Avery Relocatable Format (ARF) - 0.0.2 
+# The Avery Relocatable Format (ARF) - 0.0.3 
 The Avery Relocatable Format is a format for executing relocatable instructions, meaning that it can be loaded in memory in any place, since it does not use any type of hard-coded addresses. It's a successor to ELF in its sense of simplicity and it's tailored for the Avery Kernel.
 
 ## Tooling
@@ -70,7 +70,7 @@ All Assembly has the addresses hard-coded, thus the origin serves as the parent 
 A section should be read as so:
 * **The first byte is the one that indicates that we're talking about a section (`0xFF`)**
 * **You should read the name of the section util a `\0` byte is found**
-* **Then, read the offset of the section (4 bytes)**
+* **Then, read the address of the section (4 bytes)**
 * **Then, read the permissions of the section (1 byte)**<br>
     Permissions are as follows:
     * `0x0` indicates a `READ` value.

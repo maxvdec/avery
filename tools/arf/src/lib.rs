@@ -6,6 +6,9 @@ use elf::abi::SHT_RELA;
 use elf::endian::AnyEndian;
 use phf::phf_map;
 
+const ARF_IDENTIFIER: &str = "ARF003";
+const ARL_IDENTIFIER: &str = "ARL003";
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Architecture {
     X86 = 1,
@@ -284,9 +287,9 @@ impl ArfFile {
         }
         arf_file.header.library = arf_file.header.version_str.starts_with("ARL");
         arf_file.header.version_str = if arf_file.header.library {
-            "ARL002".to_string()
+            ARL_IDENTIFIER.to_string()
         } else {
-            "ARF002".to_string()
+            ARF_IDENTIFIER.to_string()
         };
 
         return arf_file;
@@ -355,10 +358,10 @@ impl ArfFile {
 pub fn get_arf_file(library: bool, bytes: Vec<u8>, descriptor_file: Option<&str>) -> ArfFile {
     let mut arf_file = ArfFile::default();
     if !library {
-        arf_file.header.version_str = "ARF002".to_string();
+        arf_file.header.version_str = ARF_IDENTIFIER.to_string();
         arf_file.header.library = false;
     } else {
-        arf_file.header.version_str = "ARL002".to_string();
+        arf_file.header.version_str = ARL_IDENTIFIER.to_string();
         arf_file.header.library = true;
     }
 
@@ -393,9 +396,9 @@ pub fn get_arf_file(library: bool, bytes: Vec<u8>, descriptor_file: Option<&str>
             .collect();
         arf_file.header.library = parse_ad_file(descriptor_file.unwrap()).library;
         if arf_file.header.library {
-            arf_file.header.version_str = "ARL002".to_string();
+            arf_file.header.version_str = ARL_IDENTIFIER.to_string();
         } else {
-            arf_file.header.version_str = "ARF002".to_string();
+            arf_file.header.version_str = ARF_IDENTIFIER.to_string();
         }
     }
 
@@ -469,7 +472,7 @@ pub fn get_sections_table(elf: &ElfBytes<'_, AnyEndian>) -> Vec<Section> {
 
         sections.push(Section {
             name: name.to_string(),
-            offset: section_header.sh_offset as u32,
+            offset: section_header.sh_addr as u32,
             permissions: perms,
         });
     }
@@ -674,9 +677,7 @@ fn get_fixes(elf: &ElfBytes<AnyEndian>) -> Vec<Fix> {
 
 pub fn extract_section_data(elf: &ElfBytes<AnyEndian>) -> Vec<u8> {
     let mut data = Vec::new();
-
     let section_headers = elf.section_headers().unwrap();
-
     let (_, section_names) = match elf.section_headers_with_strtab() {
         Ok((headers, names)) => (headers, names),
         Err(_) => return data,
@@ -684,8 +685,15 @@ pub fn extract_section_data(elf: &ElfBytes<AnyEndian>) -> Vec<u8> {
 
     let mut sections_with_data = Vec::new();
 
-    for section_header in section_headers {
+    let mut min_vaddr = u64::MAX;
+    let mut has_loadable_sections = false;
+
+    for section_header in section_headers.iter() {
         if section_header.sh_flags & abi::SHF_ALLOC as u64 == 0 {
+            continue;
+        }
+
+        if section_header.sh_type == abi::SHT_NOBITS {
             continue;
         }
 
@@ -710,46 +718,42 @@ pub fn extract_section_data(elf: &ElfBytes<AnyEndian>) -> Vec<u8> {
             continue;
         }
 
+        if section_header.sh_addr < min_vaddr {
+            min_vaddr = section_header.sh_addr;
+            has_loadable_sections = true;
+        }
+
         if let Ok(section_data) = elf.section_data(&section_header) {
             sections_with_data.push((section_header, section_data.0, section_name));
         }
     }
 
+    if !has_loadable_sections {
+        println!("No loadable sections found");
+        return data;
+    }
+
     sections_with_data.sort_by_key(|(header, _, _)| header.sh_addr);
 
-    let mut current_offset = 0u64;
-    let mut base_address = 0u64;
-    let mut first_section = true;
+    let mut current_file_offset = 0usize;
 
-    for (section_header, section_data, _) in sections_with_data {
-        if first_section {
-            base_address = section_header.sh_addr;
-            first_section = false;
-        }
+    for (section_header, section_data, section_name) in sections_with_data {
+        let vaddr_offset = (section_header.sh_addr - min_vaddr) as usize;
 
-        let expected_offset = section_header.sh_addr - base_address;
-
-        if expected_offset > current_offset {
-            let gap_size = (expected_offset - current_offset) as usize;
+        if vaddr_offset > current_file_offset {
+            let gap_size = vaddr_offset - current_file_offset;
             data.extend(vec![0u8; gap_size]);
-            current_offset = expected_offset;
-        }
-
-        let alignment = if section_header.sh_addralign > 0 {
-            section_header.sh_addralign
-        } else {
-            1
-        };
-
-        let misalignment = current_offset % alignment;
-        if misalignment != 0 {
-            let padding = alignment - misalignment;
-            data.extend(vec![0u8; padding as usize]);
-            current_offset += padding;
+            current_file_offset = vaddr_offset;
+        } else if vaddr_offset < current_file_offset {
+            println!(
+                "Warning: Section {} overlaps previous data (vaddr_offset: 0x{:X}, current_offset: 0x{:X})",
+                section_name, vaddr_offset, current_file_offset
+            );
         }
 
         match section_header.sh_type {
             abi::SHT_NOBITS => {
+                println!("Warning: Encountered SHT_NOBITS section in data extraction");
                 data.extend(vec![0u8; section_header.sh_size as usize]);
             }
             _ => {
@@ -762,11 +766,12 @@ pub fn extract_section_data(elf: &ElfBytes<AnyEndian>) -> Vec<u8> {
             }
         }
 
-        current_offset += section_header.sh_size;
+        current_file_offset += section_header.sh_size as usize;
     }
 
     align_data(&mut data, 16);
 
+    println!("Total extracted data size: {} bytes", data.len());
     data
 }
 

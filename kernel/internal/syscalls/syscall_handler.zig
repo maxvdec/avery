@@ -41,7 +41,18 @@ export fn syscall_handler(
     out.initOutputs();
     out.switchToSerial();
     out.print("Syscall number: ");
-    out.printn(syscall_number);
+    out.printHex(syscall_number);
+    out.print(" Arg 1: ");
+    out.printHex(arg1);
+    out.print(" Arg 2: ");
+    out.printHex(arg2);
+    out.print(" Arg 3: ");
+    out.printHex(arg3);
+    out.print(" Arg 4: ");
+    out.printHex(arg4);
+    out.print(" Arg 5: ");
+    out.printHex(arg5);
+    out.println("");
     switch (syscall_number) {
         0 => return read(arg1, arg2, arg3, arg4, arg5),
         1 => return write(arg1, arg2, arg3, arg4, arg5, extensions),
