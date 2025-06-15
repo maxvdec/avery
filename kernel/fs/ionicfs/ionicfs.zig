@@ -1005,7 +1005,7 @@ pub fn deleteFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) vo
 
             if (mem.compareBytes(u8, entryName, fileNameOnly)) {
                 for (0..25) |i| {
-                    sectorBuffer[nameStart - 24 + i] = DELETED_REGION;
+                    sectorBuffer[nameStart - 25 + i] = DELETED_REGION;
                 }
 
                 for (nameStart..nameEnd) |i| {
@@ -1016,8 +1016,6 @@ pub fn deleteFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) vo
                 }
                 ata.writeSectors(drive, currentRegion, 1, &sectorBuffer);
 
-                out.print("File deleted: ");
-                out.println(fileNameOnly);
                 return;
             }
 
