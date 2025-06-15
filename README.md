@@ -24,7 +24,7 @@ I expect to add some things to this kernel before droping an alpha:
 - [ ] Support for more architectures
 - [ ] Add support for driver management
 - [ ] Create a standard library (libc)
-- [ ] Add process schedueling
+- [x] Add process schedueling
 - [ ] Support multi-threading
 - [ ] Support multiple process executing at the same time
 

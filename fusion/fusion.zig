@@ -11,6 +11,7 @@ const vfs = @import("vfs");
 const rtc = @import("rtc");
 const path = @import("path");
 const arf = @import("arf");
+const proc = @import("process");
 
 fn printMemory(memMap: multiboot2.MemoryMapTag) void {
     @setRuntimeSafety(false);
@@ -329,57 +330,7 @@ pub fn main(memMap: multiboot2.MemoryMapTag) void {
                 lastExitCode = 0;
             }
         } else if (command.startsWith(str.make("exec"))) {
-            const fileName = command.splitChar(' ').get(1) orelse {
-                out.println("Usage: exec <filename>");
-                lastExitCode = 1;
-                continue;
-            };
-
-            if (fileName.startsWith(str.make("/"))) {
-                var route_buffer: [256]u8 = undefined;
-                const route_len = @min(fileName.length(), 255);
-                var i: usize = 0;
-                while (i < route_len) : (i += 1) {
-                    route_buffer[i] = fileName.data[i];
-                }
-                route_buffer[route_len] = 0;
-                const routeData = route_buffer[0..route_len];
-
-                const file = vfs.readFile(&getAtaController().master, 0, routeData);
-                if (file == null) {
-                    lastExitCode = 1;
-                    continue;
-                }
-                out.print(file.?);
-                out.println("");
-                lastExitCode = 0;
-            } else {
-                const joinedPath = path.joinPaths(cwd, fileName.data);
-
-                var route_buffer: [256]u8 = undefined;
-                const route_len = @min(joinedPath.len, 255);
-                var i: usize = 0;
-                while (i < route_len) : (i += 1) {
-                    route_buffer[i] = joinedPath[i];
-                }
-                route_buffer[route_len] = 0;
-                const routeData = route_buffer[0..route_len];
-
-                const file = vfs.readFile(&getAtaController().master, 0, routeData);
-                if (file == null) {
-                    lastExitCode = 1;
-                    continue;
-                }
-                const proc = arf.createProcess(arf.loadExecutable(file.?), &getAtaController().master);
-                if (proc == null) {
-                    out.println("Failed to load ELF file");
-                    lastExitCode = 1;
-                    continue;
-                }
-                proc.?.run();
-
-                lastExitCode = 0;
-            }
+            lastExitCode = 0;
         } else if (command.startsWith(str.make("arf"))) {
             const fileName = command.splitChar(' ').get(1) orelse {
                 out.println("Usage: exec <filename>");

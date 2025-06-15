@@ -1,4 +1,5 @@
 const alloc = @import("allocator");
+const kalloc = @import("kern_allocator");
 const str = @import("string");
 const sys = @import("system");
 const out = @import("output");
@@ -236,6 +237,7 @@ pub fn Array(comptime T: type) type {
         ptr: ?[*]T,
         len: usize,
         capacity: usize,
+        kernel: bool = false,
 
         const Self = @This();
 
@@ -244,6 +246,16 @@ pub fn Array(comptime T: type) type {
                 .ptr = null,
                 .len = 0,
                 .capacity = 0,
+            };
+        }
+
+        pub fn initKernel() Self {
+            @setRuntimeSafety(false);
+            return Self{
+                .ptr = null,
+                .len = 0,
+                .capacity = 0,
+                .kernel = true,
             };
         }
 
@@ -270,9 +282,36 @@ pub fn Array(comptime T: type) type {
             };
         }
 
+        pub fn fromDataAtKernel(data: []const T) Self {
+            @setRuntimeSafety(false);
+            const size = data.len;
+            if (size == 0) {
+                return Self.init();
+            }
+
+            const mem = kalloc.requestKernel(size * @sizeOf(T)) orelse {
+                sys.panic("Failed to allocate memory for array");
+            };
+
+            const ptr = @as([*]T, @alignCast(@ptrCast(mem)));
+            for (0..size) |i| {
+                ptr[i] = data[i];
+            }
+
+            return Self{
+                .ptr = ptr,
+                .len = size,
+                .capacity = size,
+            };
+        }
+
         pub fn destroy(self: *Self) void {
             if (self.ptr) |ptr| {
-                alloc.free(@ptrCast(ptr));
+                if (self.kernel) {
+                    kalloc.freeKernel(@ptrCast(ptr));
+                } else {
+                    alloc.free(@ptrCast(ptr));
+                }
             }
 
             self.ptr = null;
@@ -308,17 +347,28 @@ pub fn Array(comptime T: type) type {
             @setRuntimeSafety(false);
             const new_capacity: usize = if (self.capacity == 0) 4 else self.capacity * 2;
             const new_size = new_capacity * @sizeOf(T);
-            const new_mem = alloc.request(new_size) orelse {
-                return Error(void).throw("Failed to allocate memory");
-            };
+            var new_mem: ?[*]u8 = null;
+            if (self.kernel) {
+                new_mem = kalloc.requestKernel(new_size) orelse {
+                    return Error(void).throw("Failed to allocate memory for array");
+                };
+            } else {
+                new_mem = alloc.request(new_size) orelse {
+                    return Error(void).throw("Failed to allocate memory for array");
+                };
+            }
 
-            const new_ptr = @as([*]T, @alignCast(@ptrCast(new_mem)));
+            const new_ptr = @as([*]T, @alignCast(@ptrCast(new_mem.?)));
 
             if (self.ptr) |old_ptr| {
                 for (0..self.len) |i| {
                     new_ptr[i] = old_ptr[i];
                 }
-                alloc.free(@ptrCast(old_ptr));
+                if (self.kernel) {
+                    kalloc.freeKernel(@ptrCast(old_ptr));
+                } else {
+                    alloc.free(@ptrCast(old_ptr));
+                }
             }
 
             self.ptr = new_ptr;
@@ -829,7 +879,15 @@ pub fn printStack() void {
 
 pub fn isEmpty(comptime T: type, data: []const T) bool {
     @setRuntimeSafety(false);
-    return data.len == 0;
+    if (data.len == 0) {
+        return true;
+    }
+    for (0..data.len) |i| {
+        if (data[i] != 0x0) {
+            return false;
+        }
+    }
+    return true;
 }
 
 pub fn move(dst: [*]u8, src: [*]const u8, count: usize) void {

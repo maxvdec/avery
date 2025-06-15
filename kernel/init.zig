@@ -26,6 +26,7 @@ const tss = @import("tss");
 const process = @import("process");
 const kalloc = @import("kern_allocator");
 const serial = @import("serial");
+const sch = @import("scheduler");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -115,9 +116,11 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     // Initialize the terminal
     out.switchToGraphics(fbTerminal);
 
-    out.println("The Avery Kernel");
+    sch.initScheduler();
+
+    out.println("\nThe Avery Kernel");
     out.println("Created by Max Van den Eynde");
-    out.println("Pre-Alpha Version: paph-0.02\n");
+    out.println("Pre-Alpha Version: paph-0.03\n");
 
     fusion.main(getMemoryMap());
     while (true) {

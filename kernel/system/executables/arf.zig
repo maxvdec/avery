@@ -6,6 +6,7 @@ const kalloc = @import("kern_allocator");
 const ata = @import("ata");
 const pathfn = @import("path");
 const fs = @import("vfs");
+const sch = @import("scheduler");
 
 pub const Architecture = enum(u8) {
     i386 = 1,
@@ -221,7 +222,7 @@ pub fn loadExecutable(data: []const u8) ?Executable {
     return exec;
 }
 
-pub fn createProcess(executable: ?Executable, disk: *ata.AtaDrive) ?*proc.Process {
+pub fn createProcess(executable: ?Executable, disk: *ata.AtaDrive, startPriority: sch.ProcessPriority) ?*proc.Process {
     if (executable == null) {
         return null;
     }
@@ -281,7 +282,7 @@ pub fn createProcess(executable: ?Executable, disk: *ata.AtaDrive) ?*proc.Proces
         }
     }
 
-    const process = proc.Process.createProcess(buffer[0..total_size], exec.entryPoint).?;
+    const process = proc.Process.createProcess(buffer[0..total_size], exec.entryPoint, startPriority).?;
     return process;
 }
 

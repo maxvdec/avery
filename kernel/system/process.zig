@@ -6,6 +6,7 @@ const mem = @import("memory");
 const alloc = @import("allocator");
 const kalloc = @import("kern_allocator");
 const ext = @import("extensions");
+const sch = @import("scheduler");
 
 pub const ProcessState = enum {
     Ready,
@@ -69,6 +70,7 @@ extern fn switch_to_user_mode(
 pub const Process = struct {
     pid: u32,
     state: ProcessState,
+    priority: sch.ProcessPriority,
     page_dir: vmm.PageDirectory,
     user_stack_base: usize,
     user_stack_size: usize,
@@ -77,6 +79,17 @@ pub const Process = struct {
     context: ProcessContext,
     kernel_extensions: *ext.KernelExtensions = undefined,
     kernel_extensions_addr: u32 = 0,
+
+    time_slice_start: u32 = 0,
+    time_slice_remaining: u32 = 0,
+    quantum_count: u32 = 0,
+    total_cpu_time: u32 = 0,
+    last_scheduled: u32 = 0,
+    wait_time: u32 = 0,
+
+    base_priority: sch.ProcessPriority = sch.ProcessPriority.Normal,
+    priority_boost_time: u32 = 0,
+    starvation_threshold: u32 = 1000,
 
     fn setupStack(self: *Process) u32 {
         @setRuntimeSafety(false);
@@ -100,14 +113,21 @@ pub const Process = struct {
         return vmm.USER_STACK_VADDR;
     }
 
-    pub fn createProcess(code: []const u8, loadAt: usize) ?*Process {
+    pub fn createProcess(code: []const u8, loadAt: usize, priority: sch.ProcessPriority) ?*Process {
         @setRuntimeSafety(false);
         var proc = alloc.store(Process);
 
         proc.pid = next_pid;
         next_pid += 1;
         proc.state = ProcessState.Ready;
+        proc.priority = priority;
+        proc.base_priority = priority;
         proc.code_size = code.len;
+
+        const current_time = sys.getTimerTicks();
+        proc.time_slice_remaining = priority.getTimeSlice();
+        proc.last_scheduled = current_time;
+        proc.quantum_count = 0;
 
         proc.page_dir = vmm.createUserPageDirectory() orelse {
             out.print("Failed to create page directory for process ");
@@ -166,6 +186,8 @@ pub const Process = struct {
 
         vmm.tempUnmap(code_vaddr);
 
+        sch.scheduler.addProcess(proc);
+
         return proc;
     }
 
@@ -173,6 +195,10 @@ pub const Process = struct {
         @setRuntimeSafety(false);
         current_process = self;
         self.state = ProcessState.Running;
+
+        const current_time = sys.getTimerTicks();
+        self.time_slice_start = current_time;
+        self.time_slice_remaining = self.priority.getTimeSlice();
 
         out.switchToSerial();
         out.print("Page dir physical: ");
@@ -205,28 +231,50 @@ pub const Process = struct {
         );
     }
 
+    pub fn suspendProcess(self: *Process) void {
+        @setRuntimeSafety(false);
+        if (self.state == .Running) {
+            self.state = .Ready;
+
+            const current_time = sys.getTimerTicks();
+            const time_used = current_time - self.time_slice_start;
+            self.total_cpu_time += time_used;
+
+            if (self.time_slice_remaining > time_used) {
+                self.time_slice_remaining -= time_used;
+            } else {
+                self.time_slice_remaining = 0;
+            }
+
+            self.last_scheduled = current_time;
+        }
+    }
+
+    pub fn block(self: *Process) void {
+        @setRuntimeSafety(false);
+        self.state = ProcessState.Blocked;
+        self.suspendProcess();
+    }
+
+    pub fn unblock(self: *Process) void {
+        @setRuntimeSafety(false);
+        if (self.state == .Blocked) {
+            self.state = .Ready;
+            self.time_slice_remaining = self.priority.getTimeSlice();
+            self.quantum_count = 0;
+        }
+    }
+
     pub fn terminate(self: *Process) void {
         @setRuntimeSafety(false);
 
         self.state = ProcessState.Terminated;
-
+        sch.scheduler.removeProcess(self);
         self.cleanup();
 
-        const data = process_list.coerce();
-        for (data) |*proc| {
-            if (proc.pid == self.pid) {
-                process_list.remove(proc);
-                break;
-            }
-        }
-
         if (current_process != null and current_process.?.pid == self.pid) {
-            const fallback = createFallbackProcess();
-            current_process = fallback orelse {
-                out.println("Failed to create fallback process.");
-                return;
-            };
-            fallback.?.run();
+            current_process = null;
+            sch.scheduler.schedule();
         }
     }
 
@@ -246,6 +294,31 @@ pub const Process = struct {
             const code_paddr = vmm.tempMap(self.code_base, code_pages);
             pmm.freePages(code_paddr, code_pages);
             vmm.tempUnmap(self.code_base);
+        }
+    }
+
+    pub fn updatePriority(self: *Process) void {
+        @setRuntimeSafety(false);
+        const current_time = sys.getTimerTicks();
+
+        if (self.state == ProcessState.Ready and
+            current_time - self.last_scheduled > self.starvation_threshold)
+        {
+            if (@intFromEnum(self.priority) > @intFromEnum(sch.ProcessPriority.Critical)) {
+                self.priority = @enumFromInt(@intFromEnum(self.priority) - 1);
+                self.priority_boost_time = current_time;
+            }
+        }
+
+        if (self.priority_boost_time > 0 and
+            current_time - self.priority_boost_time > 500)
+        {
+            if (@intFromEnum(self.priority) < @intFromEnum(self.base_priority)) {
+                self.priority = @enumFromInt(@intFromEnum(self.priority) + 1);
+                if (self.priority == self.base_priority) {
+                    self.priority_boost_time = 0;
+                }
+            }
         }
     }
 
@@ -288,6 +361,10 @@ pub const Process = struct {
     }
 };
 
+pub fn beginAll() void {
+    sch.scheduleNext();
+}
+
 var current_process: ?*Process = null;
 var process_list: mem.Array(*Process) = .init();
 var next_pid: u32 = 1;
@@ -299,7 +376,7 @@ pub fn processTest() void {
         0xEB, 0xFE, // Infinite loop: jmp to the same instruction
     };
 
-    const proc = Process.createProcess(&bytes, 0) orelse {
+    const proc = Process.createProcess(&bytes, 0, .Normal) orelse {
         out.println("Failed to create process.");
         return;
     };
@@ -314,5 +391,5 @@ pub fn createFallbackProcess() ?*Process {
         0xEB, 0xFE, // Infinite loop: jmp to the same instruction
     };
 
-    return Process.createProcess(&bytes, 0);
+    return Process.createProcess(&bytes, 0, .Normal);
 }

@@ -1,3 +1,5 @@
+const pit = @import("pit");
+
 pub fn memcpyv(dst: [*]volatile u8, src: [*]volatile u8, count: usize) [*]volatile u8 {
     var i: usize = 0;
     while (i < count) : (i += 1) {
@@ -124,4 +126,9 @@ pub fn delay(iterations: u64) void {
     while (i < iterations) : (i += 1) {
         asm volatile ("nop");
     }
+}
+
+pub fn getTimerTicks() u32 {
+    @setRuntimeSafety(false);
+    return pit.timerTicks;
 }

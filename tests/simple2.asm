@@ -11,5 +11,5 @@ main:
     jmp $
 
 section .data
-msg db "Hello, ARF!", 0x0
+msg db "Hello, Another process!", 0x0
 len equ $ - msg
