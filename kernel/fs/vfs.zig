@@ -21,6 +21,7 @@ pub const DirectoryEntry = struct {
     created: u64,
     region: u32,
     isDirectory: bool,
+    addr: u64,
 };
 
 pub const Directory = struct {
@@ -340,6 +341,29 @@ pub fn directoryExists(
         else => {
             out.println("Unsupported file system detected.");
             return false;
+        },
+    }
+}
+
+pub fn deleteFile(
+    drive: *ata.AtaDrive,
+    fileName: []const u8,
+    partition: u32,
+) ?void {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return null;
+    }
+    _ = detectPartitions(drive);
+
+    switch (drive.fs) {
+        0x01 => {
+            ionicfs.deleteFile(drive, fileName, partition);
+        },
+        else => {
+            out.println("Unsupported file system detected.");
+            return null;
         },
     }
 }

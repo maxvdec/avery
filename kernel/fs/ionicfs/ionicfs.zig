@@ -80,8 +80,10 @@ pub fn parseDirectory(drive: *ata.AtaDrive, region: u32, dirName: []const u8) vf
         }
 
         var offset: usize = 1;
+        var lastOffset: usize = 1;
 
         while (offset < 508) {
+            lastOffset = offset;
             if (offset + 25 > 508) break;
 
             const entryType = sector_data[offset];
@@ -161,6 +163,7 @@ pub fn parseDirectory(drive: *ata.AtaDrive, region: u32, dirName: []const u8) vf
                 .created = created,
                 .region = entry_region,
                 .isDirectory = isDirectory,
+                .addr = @intCast(current_region * 512 + lastOffset),
             };
             entries.append(entry);
         }
@@ -883,4 +886,158 @@ pub fn directoryExists(drive: *ata.AtaDrive, dirName: []const u8, partition: u32
     }
 
     return false;
+}
+
+pub fn deleteFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) void {
+    @setRuntimeSafety(false);
+    if (!drive.is_present) {
+        out.println("No drive detected.");
+        return;
+    }
+    const partition_data = detectPartitions(drive);
+    if (partition >= partition_data.len) {
+        out.println("Partition number out of bounds.");
+        return;
+    }
+    if (!partition_data[partition].exists) {
+        out.println("Partition does not exist.");
+        return;
+    }
+
+    var withoutLastComponent: []const u8 = "";
+    var fileNameOnly: []const u8 = "";
+    const lastSlashIndex = mem.findLast(u8, fileName, '/');
+    if (lastSlashIndex == null) {
+        withoutLastComponent = "";
+        fileNameOnly = fileName;
+    } else {
+        withoutLastComponent = fileName[0..lastSlashIndex.?];
+        fileNameOnly = fileName[lastSlashIndex.? + 1 ..];
+    }
+
+    const parentRegion = traverseDirectory(drive, withoutLastComponent, partition);
+    if (parentRegion == 0) {
+        out.print("Parent directory not found: ");
+        out.println(withoutLastComponent);
+        return;
+    }
+
+    const fileRegion = findFileInDirectory(drive, fileNameOnly, parentRegion);
+    if (fileRegion == 0) {
+        out.print("File not found: ");
+        out.println(fileNameOnly);
+        return;
+    }
+
+    var offset = fileRegion;
+    while (true) {
+        var sectorBuffer = ata.readSectors(drive, offset, 1);
+        if (sectorBuffer[0] != FILE_REGION) {
+            switch (sectorBuffer[0]) {
+                0 => out.println("Empty region found, nothing to delete."),
+                DELETED_REGION => out.println("Region already marked as deleted."),
+                DIRECTORY_REGION => out.println("Cannot delete a directory as a file."),
+                else => out.println("Invalid region type found while deleting file."),
+            }
+            return;
+        }
+        sectorBuffer[0] = DELETED_REGION;
+
+        const lastFourBytes = sectorBuffer[508..512];
+        const nextRegion = mem.reinterpretBytes(u32, lastFourBytes[0..4], false).unwrap();
+
+        ata.writeSectors(drive, offset, 1, &sectorBuffer);
+
+        if (nextRegion == 0) {
+            break;
+        } else {
+            offset = nextRegion;
+        }
+    }
+
+    var currentRegion = parentRegion;
+
+    while (true) {
+        var sectorBuffer = ata.readSectors(drive, currentRegion, 1);
+
+        if (sectorBuffer[0] != DIRECTORY_REGION) {
+            out.println("Invalid directory region.");
+            return;
+        }
+
+        var entryOffset: u32 = 1;
+
+        while (entryOffset < 508) {
+            if (sectorBuffer[entryOffset] == 0x00) {
+                break;
+            }
+
+            if (sectorBuffer[entryOffset] == DELETED_REGION) {
+                entryOffset += 1 + 24;
+                while (entryOffset < 508 and sectorBuffer[entryOffset] != 0) {
+                    entryOffset += 1;
+                }
+                if (entryOffset < 508) entryOffset += 1;
+                entryOffset += 4;
+                continue;
+            }
+
+            const entryType = sectorBuffer[entryOffset];
+            if (entryType != FILE_REGION and entryType != DIRECTORY_REGION) {
+                break;
+            }
+
+            entryOffset += 1;
+            entryOffset += 24;
+
+            const nameStart = entryOffset;
+            while (entryOffset < 508 and sectorBuffer[entryOffset] != 0) {
+                entryOffset += 1;
+            }
+
+            if (entryOffset >= 508) {
+                out.println("Directory entry spans beyond region boundary.");
+                return;
+            }
+
+            const nameEnd = entryOffset;
+            const entryName = sectorBuffer[nameStart..nameEnd];
+
+            if (mem.compareBytes(u8, entryName, fileNameOnly)) {
+                for (0..25) |i| {
+                    sectorBuffer[nameStart - 24 + i] = DELETED_REGION;
+                }
+
+                for (nameStart..nameEnd) |i| {
+                    sectorBuffer[i] = DELETED_REGION;
+                }
+                for (0..4) |i| {
+                    sectorBuffer[nameEnd + i] = DELETED_REGION;
+                }
+                ata.writeSectors(drive, currentRegion, 1, &sectorBuffer);
+
+                out.print("File deleted: ");
+                out.println(fileNameOnly);
+                return;
+            }
+
+            entryOffset += 1;
+            entryOffset += 4;
+        }
+
+        const lastFourBytes = sectorBuffer[508..512];
+        const nextRegion = (@as(u32, lastFourBytes[0]) << 24) |
+            (@as(u32, lastFourBytes[1]) << 16) |
+            (@as(u32, lastFourBytes[2]) << 8) |
+            (@as(u32, lastFourBytes[3]));
+
+        if (nextRegion == 0) {
+            break;
+        }
+
+        currentRegion = nextRegion;
+    }
+
+    out.print("File not found in directory: ");
+    out.println(fileNameOnly);
 }
