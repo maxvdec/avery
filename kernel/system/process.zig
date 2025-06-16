@@ -21,7 +21,7 @@ extern fn memcpy(
     len: usize,
 ) [*]u8;
 
-pub const ProcessContext = packed struct {
+pub const ProcessContext = extern struct {
     eax: u32 = 0,
     ebx: u32 = 0,
     ecx: u32 = 0,
@@ -38,6 +38,7 @@ pub const ProcessContext = packed struct {
     fs: u32 = 0,
     gs: u32 = 0,
     ss: u32 = 0,
+    cr3: u32 = 0,
 };
 
 const USER_STACK_SIZE: usize = 2 * vmm.PAGE_SIZE;
@@ -67,6 +68,12 @@ extern fn switch_to_user_mode(
     page_dir: u32,
 ) void;
 
+pub extern fn switch_context(
+    old_context: *ProcessContext,
+    new_context: *ProcessContext,
+) void;
+pub extern fn get_context() ProcessContext;
+
 pub const Process = struct {
     pid: u32,
     state: ProcessState,
@@ -76,7 +83,7 @@ pub const Process = struct {
     user_stack_size: usize,
     code_base: usize,
     code_size: usize,
-    context: ProcessContext,
+    context: *ProcessContext,
     kernel_extensions: *ext.KernelExtensions = undefined,
     kernel_extensions_addr: u32 = 0,
 
@@ -90,6 +97,8 @@ pub const Process = struct {
     base_priority: sch.ProcessPriority = sch.ProcessPriority.Normal,
     priority_boost_time: u32 = 0,
     starvation_threshold: u32 = 1000,
+
+    initialized: bool = false,
 
     fn setupStack(self: *Process) u32 {
         @setRuntimeSafety(false);
@@ -115,7 +124,7 @@ pub const Process = struct {
 
     pub fn createProcess(code: []const u8, loadAt: usize, priority: sch.ProcessPriority) ?*Process {
         @setRuntimeSafety(false);
-        var proc = alloc.store(Process);
+        var proc = kalloc.storeKernel(Process);
 
         proc.pid = next_pid;
         next_pid += 1;
@@ -161,7 +170,8 @@ pub const Process = struct {
 
         const stack_top = proc.setupStack();
 
-        proc.context = ProcessContext{};
+        proc.context = kalloc.storeKernel(ProcessContext);
+        proc.context.* = ProcessContext{};
 
         proc.context.eip = proc.code_base;
         proc.context.esp = stack_top;
@@ -193,41 +203,60 @@ pub const Process = struct {
 
     pub fn run(self: *Process) void {
         @setRuntimeSafety(false);
+        out.print("RUNNING PROCESS ");
+        out.printn(self.pid);
+        out.println("");
         current_process = self;
         self.state = ProcessState.Running;
 
         const current_time = sys.getTimerTicks();
         self.time_slice_start = current_time;
 
-        out.switchToSerial();
-        out.print("Page dir physical: ");
-        out.printHex(self.page_dir.physical);
-        out.print("\n");
-        out.print("Kernel extensions address: ");
-        out.printHex(self.kernel_extensions_addr);
-        out.print("\n");
+        if (!self.initialized) {
+            out.switchToSerial();
+            out.print("Page dir physical: ");
+            out.printHex(self.page_dir.physical);
+            out.print("\n");
+            out.print("Kernel extensions address: ");
+            out.printHex(self.kernel_extensions_addr);
+            out.print("\n");
 
-        kernel_extensions = self.kernel_extensions_addr;
+            kernel_extensions = self.kernel_extensions_addr;
 
-        switch_to_user_mode(
-            self.context.eax,
-            self.context.ebx,
-            self.context.ecx,
-            self.context.edx,
-            self.context.esi,
-            self.context.edi,
-            self.context.ebp,
-            self.context.esp,
-            self.context.eip,
-            self.context.eflags,
-            self.context.cs,
-            self.context.ds,
-            self.context.es,
-            self.context.fs,
-            self.context.gs,
-            self.context.ss,
-            self.page_dir.physical,
-        );
+            sch.current_process = self;
+            self.initialized = true;
+
+            switch_to_user_mode(
+                self.context.eax,
+                self.context.ebx,
+                self.context.ecx,
+                self.context.edx,
+                self.context.esi,
+                self.context.edi,
+                self.context.ebp,
+                self.context.esp,
+                self.context.eip,
+                self.context.eflags,
+                self.context.cs,
+                self.context.ds,
+                self.context.es,
+                self.context.fs,
+                self.context.gs,
+                self.context.ss,
+                self.page_dir.physical,
+            );
+        } else {
+            out.switchToSerial();
+            out.print("Resuming process ");
+            out.printn(self.pid);
+            out.println("");
+
+            self.initialized = true;
+
+            const old = sch.current_process.?.context;
+
+            switch_context(old, self.context);
+        }
     }
 
     pub fn suspendProcess(self: *Process) void {

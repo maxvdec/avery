@@ -1,6 +1,7 @@
 const out = @import("output");
 const isr = @import("isr");
 const time = @import("time");
+const vmm = @import("virtual_mem");
 
 const regs = packed struct {
     gs: u32,
@@ -78,6 +79,11 @@ export fn fault_handler(r: *regs) callconv(.C) noreturn {
 
         out.print("CR2: ");
         out.printHex(cr2);
+        if (cr2 > vmm.KERNEL_MEM_BASE) {
+            out.print(" (Kernel space)\n");
+        } else {
+            out.print(" (Local space)\n");
+        }
         out.print("\n");
 
         if ((r.err_code & 0x1) == 0) {

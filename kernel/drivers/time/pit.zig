@@ -9,7 +9,7 @@ pub var initialized: bool = false;
 
 var scheduler_callback: ?*const fn () void = null;
 var last_scheduler_call: u32 = 0;
-const SCHEDULER_INTERVAL: u32 = 10;
+const SCHEDULER_INTERVAL: u32 = 50;
 
 fn calculateTimerPhase(hz: u32) void {
     const divisor: u32 = 1193180 / hz;

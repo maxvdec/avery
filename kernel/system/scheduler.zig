@@ -70,23 +70,21 @@ pub const Scheduler = struct {
 
     pub fn addProcess(self: *Scheduler, process: *Process) void {
         @setRuntimeSafety(false);
-        out.preserveMode();
-        out.switchToSerial();
-        scheduler.printStatistics();
-        out.restoreMode();
+
         if (process.state == .Ready) {
             const priority_level = @intFromEnum(process.priority);
             self.ready_queues[priority_level].append(process);
             self.total_processes += 1;
         }
-    }
-
-    pub fn removeProcess(self: *Scheduler, process: *Process) void {
-        @setRuntimeSafety(false);
         out.preserveMode();
         out.switchToSerial();
         scheduler.printStatistics();
         out.restoreMode();
+    }
+
+    pub fn removeProcess(self: *Scheduler, process: *Process) void {
+        @setRuntimeSafety(false);
+
         for (0..5) |i| {
             for (0..self.ready_queues[i].len) |j| {
                 const p = self.ready_queues[i].get(j).?;
@@ -97,6 +95,10 @@ pub const Scheduler = struct {
                 }
             }
         }
+        out.preserveMode();
+        out.switchToSerial();
+        scheduler.printStatistics();
+        out.restoreMode();
     }
 
     pub fn findNextProcess(self: *Scheduler) ?*Process {
@@ -130,10 +132,6 @@ pub const Scheduler = struct {
 
     pub fn schedule(self: *Scheduler) void {
         @setRuntimeSafety(false);
-        out.preserveMode();
-        out.switchToSerial();
-        scheduler.printStatistics();
-        out.restoreMode();
 
         if (current_process != null and current_process.?.state == .Running) {
             current_process.?.suspendProcess();
@@ -151,6 +149,8 @@ pub const Scheduler = struct {
             p.time_slice_start = current_time;
             p.time_slice_remaining = p.priority.getTimeSlice();
 
+            current_process = p;
+
             p.run();
         } else {
             const idle_proc = proc.createFallbackProcess();
@@ -163,6 +163,10 @@ pub const Scheduler = struct {
         }
 
         self.last_schedule_time = getCurrentTicks();
+        out.preserveMode();
+        out.switchToSerial();
+        scheduler.printStatistics();
+        out.restoreMode();
     }
 
     pub fn yield(self: *Scheduler) void {
@@ -219,7 +223,6 @@ pub var scheduler: Scheduler = .{
 
 fn timerInterruptHandler() void {
     @setRuntimeSafety(false);
-
     if (current_process) |p| {
         const current_time = getCurrentTicks();
         const time_used = current_time - p.time_slice_start;
@@ -227,9 +230,15 @@ fn timerInterruptHandler() void {
         const total_time_slice = p.priority.getTimeSlice();
 
         if (time_used >= total_time_slice) {
+            out.preserveMode();
+            out.switchToSerial();
+            out.println("Process time slice expired, scheduling next process.");
+            out.restoreMode();
             scheduler.schedule();
         }
     }
+
+    out.restoreMode();
 }
 
 pub fn initScheduler() void {

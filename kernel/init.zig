@@ -128,3 +128,11 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
         sys.delay(16);
     }
 }
+
+export fn printHex(val: u64) void {
+    @setRuntimeSafety(false);
+    out.preserveMode();
+    out.switchToSerial();
+    out.printHex(val);
+    out.restoreMode();
+}
