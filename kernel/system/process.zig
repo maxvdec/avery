@@ -198,7 +198,6 @@ pub const Process = struct {
 
         const current_time = sys.getTimerTicks();
         self.time_slice_start = current_time;
-        self.time_slice_remaining = self.priority.getTimeSlice();
 
         out.switchToSerial();
         out.print("Page dir physical: ");

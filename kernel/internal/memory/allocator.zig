@@ -288,6 +288,21 @@ pub fn duplicateObject(comptime T: type, original: T) ?*T {
     return dest;
 }
 
+pub fn clone(comptime T: type, original: []const T) ?[*]T {
+    @setRuntimeSafety(false);
+    const size = @sizeOf(T) * original.len;
+    const ptr = request(size) orelse {
+        sys.panic("Failed to allocate memory for clone");
+    };
+
+    const dest: [*]T = @alignCast(@ptrCast(ptr));
+    for (0..original.len) |i| {
+        dest[i] = original[i];
+    }
+
+    return dest;
+}
+
 pub fn debugHeap() void {
     @setRuntimeSafety(false);
     out.println("=== Heap Memory ===");

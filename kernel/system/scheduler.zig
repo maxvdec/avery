@@ -70,6 +70,10 @@ pub const Scheduler = struct {
 
     pub fn addProcess(self: *Scheduler, process: *Process) void {
         @setRuntimeSafety(false);
+        out.preserveMode();
+        out.switchToSerial();
+        scheduler.printStatistics();
+        out.restoreMode();
         if (process.state == .Ready) {
             const priority_level = @intFromEnum(process.priority);
             self.ready_queues[priority_level].append(process);
@@ -79,6 +83,10 @@ pub const Scheduler = struct {
 
     pub fn removeProcess(self: *Scheduler, process: *Process) void {
         @setRuntimeSafety(false);
+        out.preserveMode();
+        out.switchToSerial();
+        scheduler.printStatistics();
+        out.restoreMode();
         for (0..5) |i| {
             for (0..self.ready_queues[i].len) |j| {
                 const p = self.ready_queues[i].get(j).?;
@@ -122,16 +130,27 @@ pub const Scheduler = struct {
 
     pub fn schedule(self: *Scheduler) void {
         @setRuntimeSafety(false);
+        out.preserveMode();
+        out.switchToSerial();
+        scheduler.printStatistics();
+        out.restoreMode();
 
         if (current_process != null and current_process.?.state == .Running) {
             current_process.?.suspendProcess();
-            self.addProcess(current_process.?);
+            if (current_process.?.state == .Ready) {
+                self.addProcess(current_process.?);
+            }
         }
 
         const next_process = self.findNextProcess();
 
         if (next_process) |p| {
             p.quantum_count += 1;
+
+            const current_time = getCurrentTicks();
+            p.time_slice_start = current_time;
+            p.time_slice_remaining = p.priority.getTimeSlice();
+
             p.run();
         } else {
             const idle_proc = proc.createFallbackProcess();
@@ -205,7 +224,9 @@ fn timerInterruptHandler() void {
         const current_time = getCurrentTicks();
         const time_used = current_time - p.time_slice_start;
 
-        if (time_used >= p.time_slice_remaining) {
+        const total_time_slice = p.priority.getTimeSlice();
+
+        if (time_used >= total_time_slice) {
             scheduler.schedule();
         }
     }
@@ -213,6 +234,10 @@ fn timerInterruptHandler() void {
 
 pub fn initScheduler() void {
     @setRuntimeSafety(false);
+    out.preserveMode();
+    out.switchToSerial();
+    scheduler.printStatistics();
+    out.restoreMode();
     if (!pit.initialized) {
         pit.init();
     }

@@ -224,6 +224,7 @@ pub fn loadExecutable(data: []const u8) ?Executable {
 
 pub fn createProcess(executable: ?Executable, disk: *ata.AtaDrive, startPriority: sch.ProcessPriority) ?*proc.Process {
     if (executable == null) {
+        out.println("Invalid executable data.");
         return null;
     }
 
