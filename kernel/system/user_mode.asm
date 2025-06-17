@@ -77,83 +77,92 @@ switch_context:
     ;   [esp + 4]  = pointer to current context
     ;   [esp + 8]  = pointer to next context
     
-    mov eax, [esp + 4]             ; eax = current context pointer
+    mov edx, [esp + 4]             ; edx = current context pointer (use edx to avoid corruption)
     
-    mov [eax + 0], eax             ; save eax (will be overwritten below)
-    mov [eax + 4], ebx             ; save ebx
-    mov [eax + 8], ecx             ; save ecx
-    mov [eax + 12], edx            ; save edx
-    mov [eax + 16], esi            ; save esi
-    mov [eax + 20], edi            ; save edi
-    mov [eax + 24], ebp            ; save ebp
+    mov [edx + 0], eax             ; save eax
+    mov [edx + 4], ebx             ; save ebx
+    mov [edx + 8], ecx             ; save ecx
+    mov eax, [esp + 4]             ; get original eax value (current context pointer)
+    mov [edx + 0], eax             ; save the actual eax that was passed in
+    mov [edx + 12], edx            ; save edx (but edx was our temp, so save original)
     
-    lea ebx, [esp + 12]            ; ebx = original esp (before call + 2 params)
-    mov [eax + 28], ebx            ; save original esp
+    mov ebx, [esp + 4]             ; ebx = current context pointer
     
-    mov ebx, [esp]                 ; ebx = return address
-    mov [eax + 32], ebx            ; save eip
+    mov [ebx + 0], eax             ; save eax
+    mov [ebx + 8], ecx             ; save ecx  
+    mov [ebx + 12], edx            ; save edx
+    mov [ebx + 16], esi            ; save esi
+    mov [ebx + 20], edi            ; save edi
+    mov [ebx + 24], ebp            ; save ebp
+    mov [ebx + 4], ebx             ; save ebx (this overwrites our temp but that's ok)
+    
+    lea eax, [esp + 12]            ; eax = original esp (before call + 2 params)
+    mov [ebx + 28], eax            ; save original esp
+    
+    mov eax, [esp]                 ; eax = return address
+    mov [ebx + 32], eax            ; save eip
     
     pushfd
-    pop ebx
-    mov [eax + 36], ebx            ; save eflags
+    pop eax
+    mov [ebx + 36], eax            ; save eflags
     
-    mov bx, ds
-    mov [eax + 40], bx             ; save ds
-    mov bx, es  
-    mov [eax + 42], bx             ; save es
-    mov bx, fs
-    mov [eax + 44], bx             ; save fs
-    mov bx, gs
-    mov [eax + 46], bx             ; save gs
-    mov bx, ss
-    mov [eax + 48], bx             ; save ss
-    mov bx, cs
-    mov [eax + 50], bx             ; save cs
+    mov ax, ds
+    mov [ebx + 40], ax             ; save ds (16-bit)
+    mov ax, es  
+    mov [ebx + 42], ax             ; save es
+    mov ax, fs
+    mov [ebx + 44], ax             ; save fs
+    mov ax, gs
+    mov [ebx + 46], ax             ; save gs
+    mov ax, ss
+    mov [ebx + 48], ax             ; save ss
+    mov ax, cs
+    mov [ebx + 50], ax             ; save cs
     
-    mov ebx, cr3
-    mov [eax + 52], ebx            ; save cr3
+    mov eax, cr3
+    mov [ebx + 52], eax            ; save cr3
     
-    ; Get next context pointer
-    mov eax, [esp + 8]             ; eax = next context pointer
+    mov esi, [esp + 8]             ; esi = next context pointer
     
-    mov ebx, cr3                   ; get current CR3
-    mov ecx, [eax + 52]            ; get next CR3
-    cmp ebx, ecx                   ; compare page directories
+    mov eax, [esi + 52]            ; next cr3
+    mov ebx, [esi + 28]            ; next esp
+    mov ecx, [esi + 32]            ; next eip
+    mov edx, [esi + 36]            ; next eflags
+    
+    mov edi, cr3                   ; current CR3
+    cmp edi, eax                   ; compare with next CR3
     je skip_cr3_switch             ; skip if same page directory
     
-    mov cr3, ecx                   ; load new page directory
+    mov cr3, eax                   ; load new page directory
     
 skip_cr3_switch:
-    mov ebx, [eax + 36]            ; next eflags
-    mov ecx, [eax + 32]            ; next eip  
-    mov dx, [eax + 50]             ; next cs
-    mov esi, [eax + 28]            ; next esp
+    mov esp, ebx                   ; switch to next context's stack
     
-    mov esp, esi                   ; switch to next context's stack
+    push edx                       ; push eflags
     
-    push ebx                       ; push eflags for iret
-    push edx                       ; push cs for iret (zero-extended)
-    push ecx                       ; push eip for iret
+    movzx eax, word [esi + 50]     ; get cs (zero-extend 16->32)
+    push eax                       ; push cs
     
-    mov cx, [eax + 40]             ; restore ds
-    mov ds, cx
-    mov cx, [eax + 42]             ; restore es
-    mov es, cx
-    mov cx, [eax + 44]             ; restore fs
-    mov fs, cx
-    mov cx, [eax + 46]             ; restore gs
-    mov gs, cx
+    push ecx                       ; push eip
     
-    mov ebx, [eax + 4]             ; restore ebx
-    mov ecx, [eax + 8]             ; restore ecx  
-    mov edx, [eax + 12]            ; restore edx
-    mov esi, [eax + 16]            ; restore esi
-    mov edi, [eax + 20]            ; restore edi
-    mov ebp, [eax + 24]            ; restore ebp
+    mov ax, [esi + 40]             ; restore ds
+    mov ds, ax
+    mov ax, [esi + 42]             ; restore es
+    mov es, ax
+    mov ax, [esi + 44]             ; restore fs
+    mov fs, ax
+    mov ax, [esi + 46]             ; restore gs  
+    mov gs, ax
     
-    mov eax, [eax + 0]             ; restore eax
+    mov eax, [esi + 0]             ; restore eax
+    mov ebx, [esi + 4]             ; restore ebx
+    mov ecx, [esi + 8]             ; restore ecx
+    mov edx, [esi + 12]            ; restore edx
+    mov edi, [esi + 20]            ; restore edi
+    mov ebp, [esi + 24]            ; restore ebp
+    mov esi, [esi + 16]            ; restore esi (do this last since we need esi)
     
-    iret                           ; jump to new context                      
+    iret                           ; jump to new context                  
 
 get_context:
     push ebp
