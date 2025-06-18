@@ -58,6 +58,7 @@ pub const Scheduler = struct {
     current_queue: usize = 0,
     last_schedule_time: u32 = 0,
     total_processes: u32 = 0,
+    scheduling_in_progress: bool = false,
 
     pub fn init(self: *Scheduler) void {
         @setRuntimeSafety(false);
@@ -65,60 +66,126 @@ pub const Scheduler = struct {
             self.ready_queues[i] = mem.Array(*Process).initKernel();
         }
         self.last_schedule_time = getCurrentTicks();
+        self.scheduling_in_progress = false;
         pit.setSchedulerCallback(timerInterruptHandler);
     }
 
     pub fn addProcess(self: *Scheduler, process: *Process) void {
         @setRuntimeSafety(false);
 
+        if (process.pid == 0) return;
+
         if (process.state == .Ready) {
             const priority_level = @intFromEnum(process.priority);
+            if (self.isProcessInQueues(process)) {
+                return;
+            }
+
+            // Add to the END of the queue for round-robin behavior
             self.ready_queues[priority_level].append(process);
             self.total_processes += 1;
+
+            out.preserveMode();
+            out.switchToSerial();
+            out.print("Added process PID ");
+            out.printn(process.pid);
+            out.print(" with priority ");
+            out.printn(@intFromEnum(process.priority));
+            out.print(" to queue position ");
+            out.printn(self.ready_queues[priority_level].len - 1);
+            out.println("");
+            out.restoreMode();
         }
-        out.preserveMode();
-        out.switchToSerial();
-        scheduler.printStatistics();
-        out.restoreMode();
     }
 
-    pub fn removeProcess(self: *Scheduler, process: *Process) void {
-        @setRuntimeSafety(false);
-
-        for (0..5) |i| {
-            for (0..self.ready_queues[i].len) |j| {
-                const p = self.ready_queues[i].get(j).?;
-                if (p.pid == process.pid) {
-                    _ = self.ready_queues[i].remove(j);
-                    self.total_processes -= 1;
-                    return;
-                }
-            }
-        }
-        out.preserveMode();
-        out.switchToSerial();
-        scheduler.printStatistics();
-        out.restoreMode();
-    }
-
-    pub fn findNextProcess(self: *Scheduler) ?*Process {
+    fn isProcessInQueues(self: *Scheduler, process: *Process) bool {
         @setRuntimeSafety(false);
 
         for (0..5) |i| {
             const queue = self.ready_queues[i].coerce();
             for (queue) |p| {
-                p.updatePriority();
+                if (p.pid == process.pid) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    pub fn removeProcess(self: *Scheduler, process: *Process) void {
+        @setRuntimeSafety(false);
+
+        if (process.pid == 0) return;
+
+        for (0..5) |i| {
+            var j: usize = 0;
+            while (j < self.ready_queues[i].len) {
+                const p = self.ready_queues[i].get(j) orelse break;
+                if (p.pid == process.pid) {
+                    _ = self.ready_queues[i].remove(j);
+                    if (self.total_processes > 0) {
+                        self.total_processes -= 1;
+                    }
+
+                    out.preserveMode();
+                    out.switchToSerial();
+                    out.print("Removed process ");
+                    out.printn(process.pid);
+                    out.print(" from priority queue ");
+                    out.printn(i);
+                    out.println("");
+                    out.restoreMode();
+                    return;
+                }
+                j += 1;
+            }
+        }
+    }
+
+    pub fn findNextProcess(self: *Scheduler) ?*Process {
+        @setRuntimeSafety(false);
+
+        const current_time = getCurrentTicks();
+        const aging_threshold = 120;
+
+        for (0..5) |i| {
+            const queue = self.ready_queues[i].coerce();
+            for (queue) |p| {
+                if (p.pid != 0) {
+                    p.updatePriority();
+
+                    const wait_time = current_time - p.last_scheduled;
+
+                    if (wait_time > (aging_threshold / p.priority.getQuantumBonus()) and i > 0) {
+                        var j: usize = 0;
+                        while (j < self.ready_queues[i].len) {
+                            const proc_in_queue = self.ready_queues[i].get(j) orelse break;
+                            if (proc_in_queue.pid == p.pid) {
+                                _ = self.ready_queues[i].remove(j);
+                                self.ready_queues[i - 1].append(p);
+                                break;
+                            }
+                            j += 1;
+                        }
+                    }
+                }
             }
         }
 
         for (0..5) |i| {
-            const queue = self.ready_queues[i].coerce();
-            if (queue.len > 0) {
-                const next_proc = queue[0];
+            if (self.ready_queues[i].len > 0) {
+                const next_proc = self.ready_queues[i].get(0) orelse continue;
 
                 _ = self.ready_queues[i].remove(0);
+                if (self.total_processes > 0) {
+                    self.total_processes -= 1;
+                }
 
-                if (next_proc.time_slice_remaining == 0 or next_proc.quantum_count >= next_proc.priority.getQuantumBonus()) {
+                next_proc.last_scheduled = current_time;
+
+                if (next_proc.time_slice_remaining == 0 or
+                    next_proc.quantum_count >= next_proc.priority.getQuantumBonus())
+                {
                     next_proc.time_slice_remaining = next_proc.priority.getTimeSlice();
                     next_proc.quantum_count = 0;
                 }
@@ -133,12 +200,10 @@ pub const Scheduler = struct {
     pub fn schedule(self: *Scheduler) void {
         @setRuntimeSafety(false);
 
-        if (current_process != null and current_process.?.state == .Running) {
-            current_process.?.suspendProcess();
-            if (current_process.?.state == .Ready) {
-                self.addProcess(current_process.?);
-            }
+        if (self.scheduling_in_progress) {
+            return;
         }
+        self.scheduling_in_progress = true;
 
         const next_process = self.findNextProcess();
 
@@ -151,28 +216,35 @@ pub const Scheduler = struct {
 
             current_process = p;
 
+            self.scheduling_in_progress = false;
             p.run();
         } else {
+            out.preserveMode();
+            out.switchToSerial();
+            out.println("No processes available, creating idle process");
+            out.restoreMode();
+
             const idle_proc = proc.createFallbackProcess();
             if (idle_proc) |idle| {
+                current_process = idle;
+                self.scheduling_in_progress = false;
                 idle.run();
             } else {
                 out.println("No processes available to run, system is idle.");
+                current_process = null;
+                self.scheduling_in_progress = false;
                 asm volatile ("hlt");
             }
         }
 
         self.last_schedule_time = getCurrentTicks();
-        out.preserveMode();
-        out.switchToSerial();
-        scheduler.printStatistics();
-        out.restoreMode();
     }
 
     pub fn yield(self: *Scheduler) void {
         @setRuntimeSafety(false);
-        if (current_process != null) {
-            current_process.?.time_slice_remaining = 0;
+
+        if (current_process) |p| {
+            p.time_slice_remaining = 0;
         }
         self.schedule();
     }
@@ -223,30 +295,32 @@ pub var scheduler: Scheduler = .{
 
 fn timerInterruptHandler() void {
     @setRuntimeSafety(false);
+
+    if (scheduler.scheduling_in_progress) {
+        return;
+    }
+
     if (current_process) |p| {
         const current_time = getCurrentTicks();
         const time_used = current_time - p.time_slice_start;
-
         const total_time_slice = p.priority.getTimeSlice();
 
+        p.total_cpu_time += time_used;
+
         if (time_used >= total_time_slice) {
-            out.preserveMode();
-            out.switchToSerial();
-            out.println("Process time slice expired, scheduling next process.");
-            out.restoreMode();
             scheduler.schedule();
+        } else {
+            if (p.time_slice_remaining > time_used) {
+                p.time_slice_remaining -= time_used;
+            } else {
+                p.time_slice_remaining = 0;
+            }
         }
     }
-
-    out.restoreMode();
 }
 
 pub fn initScheduler() void {
     @setRuntimeSafety(false);
-    out.preserveMode();
-    out.switchToSerial();
-    scheduler.printStatistics();
-    out.restoreMode();
     if (!pit.initialized) {
         pit.init();
     }

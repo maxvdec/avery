@@ -203,14 +203,18 @@ pub const Process = struct {
 
     pub fn run(self: *Process) void {
         @setRuntimeSafety(false);
+        out.preserveMode();
+        out.switchToSerial();
         out.print("RUNNING PROCESS ");
         out.printn(self.pid);
         out.println("");
+        out.restoreMode();
         current_process = self;
         self.state = ProcessState.Running;
 
         const current_time = sys.getTimerTicks();
         self.time_slice_start = current_time;
+        self.last_scheduled = current_time;
 
         if (!self.initialized) {
             out.switchToSerial();
