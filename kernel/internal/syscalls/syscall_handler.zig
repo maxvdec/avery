@@ -5,6 +5,7 @@ const ata = @import("ata");
 const terminal = @import("terminal");
 const mem = @import("memory");
 const ext = @import("extensions");
+const scheduler = @import("scheduler");
 
 const FileDescriptor = struct {
     fd: u32 = 0,
@@ -38,6 +39,7 @@ export fn syscall_handler(
 ) u64 {
     @setRuntimeSafety(false);
     const extensions = @as(*ext.KernelExtensions, @ptrFromInt(kernel_extensions));
+    const sch = @as(*scheduler.Scheduler, @ptrFromInt(extensions.scheduler));
     out.initOutputs();
     out.switchToSerial();
     out.print("Syscall number: ");
@@ -53,13 +55,16 @@ export fn syscall_handler(
     out.print(" Arg 5: ");
     out.printHex(arg5);
     out.println("");
-    switch (syscall_number) {
+    const retval = switch (syscall_number) {
         0 => return read(arg1, arg2, arg3, arg4, arg5),
         1 => return write(arg1, arg2, arg3, arg4, arg5, extensions),
         2 => return open(arg1, arg2, arg3, arg4, arg5),
         3 => return close(arg1, arg2, arg3, arg4, arg5),
         else => return 0,
-    }
+    };
+
+    sch.schedule();
+    return retval;
 }
 
 fn write(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {

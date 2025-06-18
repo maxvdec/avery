@@ -4,5 +4,7 @@ Kernel Extensions are extensions that allow you to perform certain system calls.
 | Extension Name | Code | Fast-Loading |
 | -------------- | ---- | ------------ |
 | console   | 0x00 | Yes           |
-| framebuffer        | 0x01 | Yes          |
+| framebuffer        | 0x01 | No          |
 | filesystem | 0x02 | No |
+| process | 0x03 | Yes |
+| scheduler | 0x04 | Yes |

@@ -1,10 +1,12 @@
 const temrinal = @import("terminal");
 const out = @import("output");
 const proc = @import("process");
+const sch = @import("scheduler");
 
 pub const KernelExtensions = struct {
     framebufferTerminal: u32 = 0x00,
     mainProcess: u32 = 0x00,
+    scheduler: u32 = 0x00,
 
     pub fn init() KernelExtensions {
         return KernelExtensions{};
@@ -16,5 +18,9 @@ pub const KernelExtensions = struct {
 
     pub fn addProcess(self: *KernelExtensions, process: *proc.Process) void {
         self.mainProcess = @intFromPtr(process);
+    }
+
+    pub fn setScheduler(self: *KernelExtensions, scheduler: *sch.Scheduler) void {
+        self.scheduler = @intFromPtr(scheduler);
     }
 };

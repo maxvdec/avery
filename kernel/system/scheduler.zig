@@ -289,9 +289,7 @@ pub const Scheduler = struct {
 };
 
 pub var current_process: ?*Process = null;
-pub var scheduler: Scheduler = .{
-    .ready_queues = [_]mem.Array(*Process){mem.Array(*Process).initKernel()} ** 5,
-};
+pub var scheduler: *Scheduler = undefined;
 
 fn timerInterruptHandler() void {
     @setRuntimeSafety(false);
@@ -324,6 +322,15 @@ pub fn initScheduler() void {
     if (!pit.initialized) {
         pit.init();
     }
+
+    scheduler = kalloc.storeKernel(Scheduler);
+    scheduler.ready_queues = [_]mem.Array(*Process){
+        mem.Array(*Process).initKernel(),
+        mem.Array(*Process).initKernel(),
+        mem.Array(*Process).initKernel(),
+        mem.Array(*Process).initKernel(),
+        mem.Array(*Process).initKernel(),
+    };
 
     scheduler.init();
 }

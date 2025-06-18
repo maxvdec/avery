@@ -188,6 +188,7 @@ pub const Process = struct {
         kernel_ext.* = .{};
         kernel_ext.requestTerminal();
         kernel_ext.addProcess(proc);
+        kernel_ext.setScheduler(sch.scheduler);
 
         proc.kernel_extensions = kernel_ext;
         proc.kernel_extensions_addr = @intFromPtr(kernel_ext);
