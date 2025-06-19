@@ -65,7 +65,7 @@ We'll ask you some questions in order to determine and pack the driver with the 
 >
 (using 0x0)
 
-> Type in the type ID (default 'Empty Driver (0)')
+- Type in the type ID (default 'Empty Driver (0)')
 > 0
 
 Packing driver...
@@ -98,6 +98,7 @@ Then we can read some titles and description of the driver:
 
 - First comes the **driver name**, null-terminated
 - Then it comes the **driver description**, null-terminated
+- Then it comes the **driver version (3 bytes [major, minor, minor])**
 
 ### The hash
 
