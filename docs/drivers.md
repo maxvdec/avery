@@ -12,8 +12,11 @@ First, locate the `avery.h` file in your machine and add it to your path or just
 #include <avery.h>
 
 // Here, you should initialize everything you need to handle events.
-avery_status init() {
+avery_status init(u32 driverId) {
     avprint("Hello, World!\n");
+    avprint("This message is print at driver: ");
+    avprintn(driverId);
+    avprint("\n");
     return AVERY_OK;
 }
 
@@ -28,7 +31,8 @@ Note that **drivers run in kernel mode**. So, you **must be careful with errors 
 To compile the driver, use whatever compile you have available. For instance:
 
 ```bash
-gcc -c my_driver.c -I /System/Avery -o object.dro
+gcc -c my_driver.c -I /Path/To/AveryH/Directory -o elf_object.o -m32
+arf translate elf_object.o -o arf_object.dro
 ```
 
 The `.dro` file is just a **regular ELF object** but intended to be used as an alias to indicate that the object represents a driver.
@@ -36,7 +40,7 @@ The `.dro` file is just a **regular ELF object** but intended to be used as an a
 Then, use the driver packer tool provided in the [mOS repository](https://github.com/maxvdec/mOS) to pack the driver accordingly. When packing it'll ask a couple of questions. Here's an example
 
 ```
-> ./drvpack object.dro -o mydriv.drv
+> ./drvpack arf_object.dro -o mydriv.drv
 Welcome to the Avery System Driver Packer.
 We'll ask you some questions in order to determine and pack the driver with the corresponding flags.
 
@@ -44,7 +48,7 @@ We'll ask you some questions in order to determine and pack the driver with the 
 > CoolDriver
 
 - Describe your driver in a sentence
-> A simple driver to teach creation
+> A simple driver to teach driver creation
 
 - What version is your driver in?
 > 1.0.0
@@ -112,7 +116,7 @@ Finally, read the rest of the file as an **ARF executable** (more on that [here]
 Each driver type is specified to **export certain functions** to interface with the operating system. Each type has an identifier. There are two **standard fuctions** that every type should have:
 
 ```c
-avery_status init() {}
+avery_status init(u32 driverId) {}
 avery_status destroy() {}
 ```
 
@@ -126,7 +130,7 @@ This driver is meant to be used with devices that feature both **input and outpu
 
 ```c
 // Should initialize the device
-avery_status init(avery_device* dev) {}
+avery_status init(avery_device* dev, u32 driverId) {}
 
 // Should close the device
 avery_status destroy(avery_device* dev) {}
@@ -153,19 +157,19 @@ This driver handles block-oriented storage devices like hard drives, SSDs or USB
 
 ```c
 // This function should initialize the driver. Flags can be interpreted as wish
-avery_status init(avery_device* dev, int flags) {}
+avery_status init(avery_stg* dev, int flags, u32 driverId) {}
 
 // This function should close the device.
-avery_status destroy(avery_device* dev) {}
+avery_status destroy(avery_stg* dev) {}
 
 // Should read the sector and store the value in the buffer
-avery_status read(avery_device* dev, u64 sector, void* kbuffer, size_t count) {}
+avery_status read(avery_stg* dev, u64 sector, void* kbuffer, size_t count) {}
 
 // Should write the data over to the sector
-avery_status write(avery_device* dev, u64 sector, const void* data, size_t count) {}
+avery_status write(avery_stg* dev, u64 sector, const void* data, size_t count) {}
 
 // Should send the command to the device
-avery_status sendcmd(avery_device* dev, u32 cmd, void* arg) {}
+avery_status sendcmd(avery_stg* dev, u32 cmd, void* arg) {}
 ```
 
 ### The Filesystem Plugin (0x3)
@@ -174,7 +178,7 @@ This driver helps translate the one filesystem over to data that the kernel can 
 
 ```c
 // This function should return information about the filesystem and initialize it.
-avery_fs init(avery_device* dev) {}
+avery_fs init(avery_device* dev, u32 driverId) {}
 
 // This function should free memory and close the device.
 avery_status close(avery_device* dev) {}
