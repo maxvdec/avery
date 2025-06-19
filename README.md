@@ -33,3 +33,10 @@ I expect to add some things to this kernel before droping an alpha:
 - [ ] Add better kernel logging
 
 Then, We will expand the kernel to add more functionalities until make Avery, the modern successor of Linux.
+
+# Some interesting documents
+
+- [Build](./BUILD.md) teaches you how to build all the software
+- [Run](./RUN.md) teaches you how to run the ISO
+- The documentation is [here](./docs)
+- Also, the license is [here](./LICENSE)
