@@ -1,21 +1,57 @@
-use drvpack::get_options;
+use drvpack::get_driver_file;
 
 fn main() {
-    let options = get_options();
+    use std::env;
+    use std::process;
 
-    // Demonstrate accessing the options
-    println!(
-        "Driver: {} v{}.{}.{}",
-        options.driver_name(),
-        options.driver_version()[0],
-        options.driver_version()[1],
-        options.driver_version()[2]
-    );
-    println!("Description: {}", options.driver_description());
-    println!("Manufacturer ID: 0x{:X}", options.manufacturer());
-    println!("Device ID: 0x{:X}", options.device_id());
-    println!("Subsystem ID: 0x{:X}", options.subsystem());
-    println!("Driver Type: {}", options.driver_type());
+    let args: Vec<String> = env::args().collect();
 
-    println!("Driver packed!");
+    if args.len() < 3 {
+        eprintln!(
+            "Usage: {} <input_file> -o <output_file> [-d <description_file>]",
+            args[0]
+        );
+        process::exit(1);
+    }
+
+    let input_file = &args[1];
+    let mut output_file = String::new();
+    let mut description_file: Option<String> = None;
+
+    let mut i = 2;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-o" => {
+                if i + 1 < args.len() {
+                    output_file = args[i + 1].clone();
+                    i += 2;
+                } else {
+                    eprintln!("Error: -o flag requires an output file");
+                    process::exit(1);
+                }
+            }
+            "-d" => {
+                if i + 1 < args.len() {
+                    description_file = Some(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    eprintln!("Error: -d flag requires a description file");
+                    process::exit(1);
+                }
+            }
+            _ => {
+                eprintln!("Error: Unknown flag {}", args[i]);
+                process::exit(1);
+            }
+        }
+    }
+
+    if output_file.is_empty() {
+        eprintln!("Error: -o flag with output file is required");
+        process::exit(1);
+    }
+
+    let driver = get_driver_file(input_file.clone(), description_file);
+    let bytes = driver.to_bytes();
+    let _ = std::fs::write(&output_file, bytes);
 }

@@ -1,4 +1,4 @@
-struct DriverFile {
+pub struct DriverFile {
     header: String,
     type_byte: u8,
     manufacturer: u16,
@@ -29,7 +29,7 @@ impl Default for DriverFile {
 
             hash: String::new(),
 
-            exec: String::new(),
+            exec: Vec::new(),
         }
     }
 }
@@ -48,7 +48,26 @@ impl DriverFile {
 
         self.hash = String::new();
 
-        self.exec = String::new();
+        self.exec = Vec::new();
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.push(self.type_byte);
+        bytes.extend_from_slice(&self.manufacturer.to_le_bytes());
+        bytes.extend_from_slice(&self.device_id.to_le_bytes());
+        bytes.push(self.subsystem);
+
+        bytes.extend_from_slice(&self.driver_name.as_bytes());
+        bytes.push(0x0);
+        bytes.extend_from_slice(&self.driver_description.as_bytes());
+        bytes.push(0x0);
+        bytes.extend_from_slice(&self.driver_version);
+        bytes.extend_from_slice(&self.hash.as_bytes());
+        bytes.push(0x0);
+
+        bytes.extend_from_slice(&self.exec);
+        bytes
     }
 }
 
@@ -62,6 +81,20 @@ pub struct Options {
     device_id: u16,
     subsystem: u8,
     driver_type: u8,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            driver_name: String::new(),
+            driver_description: String::new(),
+            driver_version: [0; 3],
+            manufacturer: 0,
+            device_id: 0,
+            subsystem: 0,
+            driver_type: 0,
+        }
+    }
 }
 
 impl Options {
@@ -197,8 +230,31 @@ pub fn get_options() -> Options {
     }
 }
 
-pub fn get_driver_file(executable: String) -> DriverFile {
-    let options = get_options();
+pub fn get_options_from_file(options_file: String) -> Options {
+    let file = std::fs::read_to_string(options_file).unwrap();
+    let mut options = Options::default();
+    let mut lines = file.lines();
+
+    options.driver_name = lines.next().unwrap().to_string();
+    options.driver_description = lines.next().unwrap().to_string();
+    options.manufacturer = lines.next().unwrap().parse().unwrap();
+    options.device_id = lines.next().unwrap().parse().unwrap();
+    options.subsystem = lines.next().unwrap().parse().unwrap();
+    options.driver_type = lines.next().unwrap().parse().unwrap();
+
+    options
+}
+
+pub fn get_driver_file(executable: String, options_file: Option<String>) -> DriverFile {
+    let options: Options;
+    match options_file {
+        Some(options_file) => {
+            options = get_options_from_file(options_file);
+        }
+        None => {
+            options = get_options();
+        }
+    }
     let mut driver_file = DriverFile::default();
 
     driver_file.set_options(options);

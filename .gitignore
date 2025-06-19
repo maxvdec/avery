@@ -23,3 +23,6 @@ tools/arf/tests/*
 !tools/arf/tests/*.asm
 tests/*.arf
 tests/*.arl
+drivers/*.dro
+drivers/*.drv
+drivers/*.o

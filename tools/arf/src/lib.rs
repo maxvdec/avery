@@ -273,18 +273,8 @@ impl ArfFile {
             offset += 1;
         }
 
-        offset += 1; // Skip data type byte
-        let data_start = offset;
-        let data_end = data[data_start..]
-            .iter()
-            .position(|&b| b == 0xFF)
-            .unwrap_or(data.len() - data_start)
-            + data_start;
-        arf_file.data = data[data_start..data_end].to_vec();
-        offset = data_end;
-        if offset < data.len() {
-            panic!("Unexpected data after ARF file content");
-        }
+        offset += 1; // Skip data type byte 
+        arf_file.data = data[offset..].to_vec();
         arf_file.header.library = arf_file.header.version_str.starts_with("ARL");
         arf_file.header.version_str = if arf_file.header.library {
             ARL_IDENTIFIER.to_string()
