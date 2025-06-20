@@ -21,8 +21,6 @@ switch_to_user_mode:
     ; esp + 64 -> ss
     ; esp + 68 -> page_dir
     
-    cli
-    
     mov eax, esp
     
     mov ebx, [eax + 68]   
@@ -71,8 +69,6 @@ switch_to_user_mode:
 
 global switch_context
 switch_context:
-    cli
-
     mov eax, [esp + 4] ; old_context pointer
     mov ebx, [esp + 8] ; new_context pointer
 
@@ -165,9 +161,7 @@ switch_context:
     
     mov eax, [eax + 0]      ; Restore EAX (this must be last!)
     
-    sti
-    
-    retf
+    iret
 
 .restore_and_return:
     sti

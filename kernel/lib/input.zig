@@ -8,7 +8,6 @@ pub fn readln() []const u8 {
     @setRuntimeSafety(false);
     var buffer: [1024]u8 = undefined;
     var i: usize = 0;
-    keyboard.enableKeyboard();
     keyboard.currentChar = 0;
     keyboard.shift = false;
 
@@ -44,13 +43,12 @@ pub fn readln() []const u8 {
 
 pub fn readbytes(len: usize) []const u8 {
     @setRuntimeSafety(false);
-    var buffer: [1024]u8 = undefined;
+    var buffer: [1024]u8 = [_]u8{0} ** 1024;
     if (len > buffer.len) {
         return &[_]u8{}; // Return empty slice if requested length exceeds buffer size
     }
 
     var i: usize = 0;
-    keyboard.enableKeyboard();
     keyboard.currentChar = 0;
 
     while (i < len) {
@@ -70,12 +68,19 @@ pub fn readbytes(len: usize) []const u8 {
                 out.printchar(chr);
             }
         } else if (chr == '\n' or chr == '\r') {
-            break; // Stop reading on newline
-        } else {
-            buffer[i] = chr;
-            i += 1;
             out.printchar(chr);
+            while (i < len) {
+                buffer[i] = 0;
+                i += 1;
+            }
+            break;
+        } else {
+            if (i < buffer.len - 1) {
+                buffer[i] = chr;
+                i += 1;
+                out.printchar(chr);
+            }
         }
     }
-    return buffer[0..i];
+    return buffer[0..len];
 }

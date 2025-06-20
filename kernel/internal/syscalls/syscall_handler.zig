@@ -12,6 +12,7 @@ const arf = @import("arf");
 const pmm = @import("physical_mem");
 const vmm = @import("virtual_mem");
 const unix = @import("rtc");
+const kalloc = @import("kern_allocator");
 
 const FLAG_READ = 0x1;
 const FLAG_WRITE = 0x2;
@@ -56,6 +57,7 @@ export fn syscall_handler(
     out.print(" Arg 5: ");
     out.printHex(arg5);
     out.println("");
+    kalloc.restore(@as(*kalloc.Snapshot, @ptrFromInt(extensions.kernelAllocSnapshot)).*);
     const retval = switch (syscall_number) {
         0x00 => return read(arg1, arg2, arg3, arg4, arg5, extensions),
         0x01 => return write(arg1, arg2, arg3, arg4, arg5, extensions),
@@ -77,12 +79,14 @@ export fn syscall_handler(
 }
 
 fn makeFileDescriptors(extensions: *ext.KernelExtensions) mem.Array(proc.FileDescriptor) {
+    @setRuntimeSafety(false);
     const process = @as(*proc.Process, @ptrFromInt(extensions.mainProcess));
     const file_descriptors = process.file_descriptors;
     return file_descriptors;
 }
 
 fn write(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
+    @setRuntimeSafety(false);
     const ptr: [*]const u8 = @ptrFromInt(arg2);
     const len = arg3;
     const fd = arg1;
@@ -129,6 +133,7 @@ fn write(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.Kerne
 }
 
 fn open(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
+    @setRuntimeSafety(false);
     const path: [*]const u8 = @ptrFromInt(arg1);
     const flags = arg2;
     const mode = arg3;
@@ -159,13 +164,14 @@ fn open(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.Kernel
 }
 
 fn read(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
+    @setRuntimeSafety(false);
     const fd = arg1;
     const buf: [*]u8 = @ptrFromInt(arg2);
     const len = arg3;
 
     var file_descriptors = makeFileDescriptors(extensions);
 
-    if (fd != 1 and fd != 2) {
+    if (fd > 2) {
         for (file_descriptors.iterate()) |file_desc| {
             if (file_desc.fd == fd) {
                 const drive = @as(*ata.AtaDrive, @ptrFromInt(extensions.ataDrive));
@@ -226,11 +232,14 @@ fn close(arg1: u32, _: u32, _: u32, _: u32, _: u32, extensions: *ext.KernelExten
 }
 
 fn getpid(_: u32, _: u32, _: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
+    @setRuntimeSafety(false);
     const process = @as(*proc.Process, @ptrFromInt(extensions.mainProcess));
     return process.pid;
 }
 
 fn procSyscall(arg1: u32, _: u32, _: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
+    @setRuntimeSafety(false);
+
     scheduler.scheduler = @ptrFromInt(extensions.scheduler);
 
     const buf: [*]const u8 = @ptrFromInt(arg1);
@@ -260,12 +269,14 @@ fn procSyscall(arg1: u32, _: u32, _: u32, _: u32, _: u32, extensions: *ext.Kerne
 }
 
 fn exit(arg1: u32, _: u32, _: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
+    @setRuntimeSafety(false);
     const process = @as(*proc.Process, @ptrFromInt(extensions.mainProcess));
     process.terminate();
     return arg1;
 }
 
 fn remove(arg1: u32, _: u32, _: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
+    @setRuntimeSafety(false);
     const drive = @as(*ata.AtaDrive, @ptrFromInt(extensions.ataDrive));
     const pathData: [*]u8 = @ptrFromInt(arg1);
     const pathEnd = mem.findPtr(u8, pathData, 0x0);
@@ -284,6 +295,7 @@ fn remove(arg1: u32, _: u32, _: u32, _: u32, _: u32, extensions: *ext.KernelExte
 }
 
 fn newdir(arg1: u32, _: u32, _: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
+    @setRuntimeSafety(false);
     const drive = @as(*ata.AtaDrive, @ptrFromInt(extensions.ataDrive));
     const pathData: [*]u8 = @ptrFromInt(arg1);
     const pathEnd = mem.findPtr(u8, pathData, 0x0);

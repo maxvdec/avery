@@ -20,6 +20,35 @@ var kernel_total_blocks: usize = 0;
 const INITIAL_KERNEL_HEAP_SIZE = 8 * pmm.PAGE_SIZE;
 const MIN_BLOCK_SIZE = 16;
 
+pub const Snapshot = struct {
+    heap_start: usize,
+    heap_end: usize,
+    heap_size: usize,
+    free_blocks: usize,
+    used_blocks: usize,
+    total_blocks: usize,
+};
+
+pub fn takeSnapshot() Snapshot {
+    return Snapshot{
+        .heap_start = @intFromPtr(kernel_heap_start.?),
+        .heap_end = kernel_heap_end,
+        .heap_size = kernel_heap_size,
+        .free_blocks = kernel_free_blocks,
+        .used_blocks = kernel_used_blocks,
+        .total_blocks = kernel_total_blocks,
+    };
+}
+
+pub fn restore(snapshot: Snapshot) void {
+    kernel_heap_start = @ptrFromInt(snapshot.heap_start);
+    kernel_heap_end = snapshot.heap_end;
+    kernel_heap_size = snapshot.heap_size;
+    kernel_free_blocks = snapshot.free_blocks;
+    kernel_used_blocks = snapshot.used_blocks;
+    kernel_total_blocks = snapshot.total_blocks;
+}
+
 var kernel_heap_base: usize = vmm.KERNEL_MEM_BASE + 0x2000000;
 var next_kernel_heap_addr: usize = 0;
 

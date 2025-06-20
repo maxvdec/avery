@@ -11,6 +11,10 @@ var keyboard_init = false;
 fn keyboard_handler(_: *sys.regs) void {
     @setRuntimeSafety(false);
     const scancode: u8 = sys.inb(0x60);
+    out.preserveMode();
+    out.switchToSerial();
+    out.printHex(scancode);
+    out.restoreMode();
     if (scancode & 0x80 != 0) {
         currentChar = 0;
         if (scancode == 0xAA) {

@@ -33,7 +33,7 @@ pub const ProcessContext = extern struct {
     ebp: u32 = 0,
     esp: u32 = 0,
     eip: u32 = 0,
-    eflags: u32 = 0,
+    eflags: u32 = 0x202,
     cs: u32 = 0,
     ds: u32 = 0,
     es: u32 = 0,
@@ -242,6 +242,8 @@ pub const Process = struct {
             out.printHex(self.kernel_extensions_addr);
             out.print("\n");
 
+            self.kernel_extensions.updateKernelAlloc();
+
             kernel_extensions = self.kernel_extensions_addr;
 
             sch.current_process = self;
@@ -271,6 +273,10 @@ pub const Process = struct {
             out.print("Resuming process ");
             out.printn(self.pid);
             out.println("");
+
+            self.kernel_extensions.updateKernelAlloc();
+
+            kernel_extensions = self.kernel_extensions_addr;
 
             self.initialized = true;
 

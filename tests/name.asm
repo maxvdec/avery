@@ -19,7 +19,7 @@ main:
     mov eax, 1 
     mov ebx, 1 
     mov ecx, ask_name_msg
-    mov edx, 26
+    mov edx, 20
     int 0x80
     
     mov eax, 0 
@@ -27,7 +27,6 @@ main:
     mov ecx, name
     mov edx, 64
     int 0x80
-    mov esi, eax
     
     mov eax, 1 
     mov ebx, 1 

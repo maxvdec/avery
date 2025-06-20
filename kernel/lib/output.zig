@@ -74,8 +74,7 @@ pub fn switchToVga() void {
 pub fn switchToGraphics(fbTerminal: *terminal.FramebufferTerminal) void {
     @setRuntimeSafety(false);
     mode = OutputMode.Graphics;
-    term = kalloc.storeKernel(terminal.FramebufferTerminal);
-    term.* = fbTerminal.*;
+    term = fbTerminal;
 }
 
 pub fn initOutputs() void {

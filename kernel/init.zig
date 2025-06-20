@@ -81,6 +81,8 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     syscall.initSyscall();
     out.println("All core services initialized.");
 
+    keyboard.enableKeyboard();
+
     // Setup memory management
     const bootInfo = multiboot2.getBootInfo(addr);
     const memMap = multiboot2.getMemoryMapTag(bootInfo);
@@ -108,11 +110,11 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
     _ = fusion.getAtaController();
 
     // Obtain the framebuffer and font
-    const fb = alloc.store(framebuffer.Framebuffer);
+    const fb = kalloc.storeKernel(framebuffer.Framebuffer);
     fb.* = framebuffer.Framebuffer.init(fbTag);
-    const fnt = alloc.store(font.Font);
+    const fnt = kalloc.storeKernel(font.Font);
     fnt.* = font.Font.init();
-    var fbTerminal = alloc.store(terminal.FramebufferTerminal);
+    var fbTerminal = kalloc.storeKernel(terminal.FramebufferTerminal);
     fbTerminal.* = terminal.FramebufferTerminal.init(fb, fnt);
 
     // Initialize the terminal

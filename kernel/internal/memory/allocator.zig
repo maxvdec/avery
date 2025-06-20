@@ -20,6 +20,26 @@ var total_blocks: usize = 0;
 const INITIAL_HEAP_SIZE = 16 * pmm.PAGE_SIZE;
 const MIN_BLOCK_SIZE = 16;
 
+pub const Snapshot = struct {
+    heap_start: usize,
+    heap_end: usize,
+    heap_size: usize,
+    free_blocks: usize,
+    used_blocks: usize,
+    total_blocks: usize,
+};
+
+pub fn takeSnapshot() Snapshot {
+    return Snapshot{
+        .heap_start = @intFromPtr(heap_start.?),
+        .heap_end = heap_end,
+        .heap_size = heap_size,
+        .free_blocks = free_blocks,
+        .used_blocks = used_blocks,
+        .total_blocks = total_blocks,
+    };
+}
+
 pub fn initHeap() bool {
     @setRuntimeSafety(false);
     if (heap_start != null) return true;
