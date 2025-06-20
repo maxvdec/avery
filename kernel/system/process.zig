@@ -7,6 +7,8 @@ const alloc = @import("allocator");
 const kalloc = @import("kern_allocator");
 const ext = @import("extensions");
 const sch = @import("scheduler");
+const fusion = @import("fusion");
+const ata = @import("ata");
 
 pub const ProcessState = enum {
     Ready,
@@ -74,6 +76,15 @@ pub extern fn switch_context(
 ) void;
 pub extern fn get_context() ProcessContext;
 
+pub var drive: *ata.AtaDrive = undefined;
+
+pub const FileDescriptor = struct {
+    fd: u32,
+    mode: u32,
+    flags: u32,
+    path: []const u8,
+};
+
 pub const Process = struct {
     pid: u32,
     state: ProcessState,
@@ -93,6 +104,8 @@ pub const Process = struct {
     total_cpu_time: u32 = 0,
     last_scheduled: u32 = 0,
     wait_time: u32 = 0,
+
+    file_descriptors: mem.Array(FileDescriptor) = mem.Array(FileDescriptor).initKernel(),
 
     base_priority: sch.ProcessPriority = sch.ProcessPriority.Normal,
     priority_boost_time: u32 = 0,
@@ -189,6 +202,9 @@ pub const Process = struct {
         kernel_ext.requestTerminal();
         kernel_ext.addProcess(proc);
         kernel_ext.setScheduler(sch.scheduler);
+        drive = kalloc.storeKernel(ata.AtaDrive);
+        drive.* = fusion.getAtaController().master;
+        kernel_ext.setAtaDrive(drive);
 
         proc.kernel_extensions = kernel_ext;
         proc.kernel_extensions_addr = @intFromPtr(kernel_ext);

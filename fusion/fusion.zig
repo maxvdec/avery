@@ -12,6 +12,7 @@ const rtc = @import("rtc");
 const path = @import("path");
 const arf = @import("arf");
 const proc = @import("process");
+const kalloc = @import("kern_allocator");
 
 fn printMemory(memMap: multiboot2.MemoryMapTag) void {
     @setRuntimeSafety(false);
@@ -35,12 +36,13 @@ fn printMemory(memMap: multiboot2.MemoryMapTag) void {
     out.println(" bytes");
 }
 
-pub var ataController: ?ata.AtaController = null;
+pub var ataController: ?*ata.AtaController = null;
 pub fn getAtaController() *ata.AtaController {
     if (ataController == null) {
-        ataController = ata.makeController();
+        ataController = kalloc.storeKernel(ata.AtaController);
+        ataController.?.* = ata.makeController();
     }
-    return &ataController.?;
+    return ataController.?;
 }
 
 pub fn main(memMap: multiboot2.MemoryMapTag) void {

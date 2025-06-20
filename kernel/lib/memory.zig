@@ -1024,3 +1024,14 @@ pub fn append(comptime T: type, array: []T, elem: T) []T {
 
     return new_array[0..new_len];
 }
+
+pub fn findPtr(comptime T: type, ptr: [*]const T, elem: T) usize {
+    @setRuntimeSafety(false);
+    var i: usize = 0;
+    while (true) : (i += 1) {
+        if (ptr[i] == elem) {
+            return i;
+        }
+    }
+    return ptr.len;
+}
