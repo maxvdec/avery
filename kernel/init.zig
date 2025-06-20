@@ -45,6 +45,8 @@ pub fn getMemoryMap() multiboot2.MemoryMapTag {
     return memoryMap;
 }
 
+export const AVERY_VERSION_STR: [31:0]u8 = "Avery Kernel v0.0.3 (pre-alpha)".*;
+
 extern fn memcpy(
     dest: [*]u8,
     src: [*]const u8,

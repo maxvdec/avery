@@ -1,0 +1,17 @@
+=== Syscalls Implemented ===
+read
+write
+open
+close
+getpid
+proc
+exit
+remove
+memmap
+getunix
+version
+
+=== Not implemented ===
+rmdir
+newdir
+rename

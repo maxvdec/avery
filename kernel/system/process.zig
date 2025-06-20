@@ -334,9 +334,7 @@ pub const Process = struct {
             vmm.destroyPageDirectory(self.page_dir);
         }
 
-        if (self.kernel_extensions != null) {
-            kalloc.freeKernel(self.kernel_extensions);
-        }
+        kalloc.freeKernelObject(ext.KernelExtensions, self.kernel_extensions);
 
         if (self.code_base != 0) {
             const code_pages = (self.code_size + vmm.PAGE_SIZE - 1) / vmm.PAGE_SIZE;

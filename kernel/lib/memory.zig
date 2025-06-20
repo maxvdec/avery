@@ -1035,3 +1035,15 @@ pub fn findPtr(comptime T: type, ptr: [*]const T, elem: T) usize {
     }
     return ptr.len;
 }
+
+pub fn copySafe(src: []const u8, dst: [*]u8, len: usize) void {
+    for (0..len) |i| {
+        dst[i] = src[i];
+    }
+
+    if (len > src.len) {
+        for (src.len..len) |i| {
+            dst[i] = 0;
+        }
+    }
+}
