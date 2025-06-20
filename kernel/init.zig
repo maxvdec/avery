@@ -70,6 +70,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
 
     // Initialize core services
     gdt.init();
+    gdt.gdt_flush();
     tss.init();
     gdt.gdt_flush();
     tss.loadTss();

@@ -13,6 +13,8 @@ const pmm = @import("physical_mem");
 const vmm = @import("virtual_mem");
 const unix = @import("rtc");
 const kalloc = @import("kern_allocator");
+const irq = @import("irq");
+const keyboard = @import("keyboard");
 
 const FLAG_READ = 0x1;
 const FLAG_WRITE = 0x2;
@@ -42,6 +44,16 @@ export fn syscall_handler(
     @setRuntimeSafety(false);
     const extensions = @as(*ext.KernelExtensions, @ptrFromInt(kernel_extensions));
     const sch = @as(*scheduler.Scheduler, @ptrFromInt(extensions.scheduler));
+    keyboard.enableKeyboard();
+    irq.remap();
+
+    var eflags: u32 = undefined;
+    asm volatile ("pushfd; popl %[eflags]"
+        : [eflags] "=r" (eflags),
+        :
+        : "memory"
+    );
+
     out.initOutputs();
     out.switchToSerial();
     out.print("Syscall number: ");
@@ -56,6 +68,9 @@ export fn syscall_handler(
     out.printHex(arg4);
     out.print(" Arg 5: ");
     out.printHex(arg5);
+    out.println("");
+    out.print("Flags: ");
+    out.printHex(eflags);
     out.println("");
     kalloc.restore(@as(*kalloc.Snapshot, @ptrFromInt(extensions.kernelAllocSnapshot)).*);
     const retval = switch (syscall_number) {

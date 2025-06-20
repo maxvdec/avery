@@ -74,7 +74,7 @@ switch_context:
 
     test eax, eax
     jz .switch_to_new
-    test edx, edx
+    test ebx, ebx
     jz .restore_and_return
 
     mov [eax + 0], eax
@@ -117,7 +117,7 @@ switch_context:
     pop eax
 
 .switch_to_new:
-    mov eax, edx
+    mov eax, ebx
 
     cmp eax, 0x1000
     jb .restore_and_return
