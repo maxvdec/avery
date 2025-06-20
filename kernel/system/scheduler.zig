@@ -194,6 +194,10 @@ pub const Scheduler = struct {
             }
         }
 
+        if (current_process != null) {
+            return current_process;
+        }
+
         return null;
     }
 
