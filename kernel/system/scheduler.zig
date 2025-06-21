@@ -61,6 +61,7 @@ pub const Scheduler = struct {
     last_schedule_time: u32 = 0,
     total_processes: u32 = 0,
     scheduling_in_progress: bool = false,
+    redo_scheduling: bool = false,
 
     pub fn init(self: *Scheduler) void {
         @setRuntimeSafety(false);
@@ -71,6 +72,9 @@ pub const Scheduler = struct {
         self.last_schedule_time = getCurrentTicks();
         self.scheduling_in_progress = false;
         pit.setSchedulerCallback(timerInterruptHandler);
+
+        // Create the idle process
+        Process.createIdleProcess();
     }
 
     pub fn addProcess(self: *Scheduler, process: *Process) void {
@@ -104,6 +108,10 @@ pub const Scheduler = struct {
         } else {
             return;
         }
+    }
+
+    pub fn refreshInterrupts() void {
+        pit.setSchedulerCallback(timerInterruptHandler);
     }
 
     fn isProcessInQueues(self: *Scheduler, process: *Process) bool {
@@ -218,6 +226,8 @@ pub const Scheduler = struct {
         out.print(" in ready queue");
         out.println("");
         out.restoreMode();
+
+        self.redo_scheduling = true;
     }
 
     pub fn findNextProcess(self: *Scheduler) ?*Process {
@@ -312,17 +322,7 @@ pub const Scheduler = struct {
             out.println("No processes available, creating idle process");
             out.restoreMode();
 
-            const idle_proc = proc.createFallbackProcess();
-            if (idle_proc) |idle| {
-                current_process = idle;
-                self.scheduling_in_progress = false;
-                idle.run();
-            } else {
-                out.println("No processes available to run, system is idle.");
-                current_process = null;
-                self.scheduling_in_progress = false;
-                asm volatile ("hlt");
-            }
+            sys.panic("No process to run. Idle process was killed. This could be related to a security issue.");
         }
 
         self.last_schedule_time = getCurrentTicks();
@@ -377,12 +377,18 @@ pub const Scheduler = struct {
 };
 
 pub var current_process: ?*Process = null;
-pub var scheduler: *Scheduler = undefined;
+pub var scheduler: ?*Scheduler = null;
 
 fn timerInterruptHandler() void {
     @setRuntimeSafety(false);
 
-    if (scheduler.scheduling_in_progress) {
+    if (scheduler.?.scheduling_in_progress) {
+        return;
+    }
+
+    if (scheduler.?.redo_scheduling) {
+        scheduler.?.redo_scheduling = false;
+        scheduler.?.schedule();
         return;
     }
 
@@ -394,7 +400,7 @@ fn timerInterruptHandler() void {
         p.total_cpu_time += time_used;
 
         if (time_used >= total_time_slice) {
-            scheduler.schedule();
+            scheduler.?.schedule();
         } else {
             if (p.time_slice_remaining > time_used) {
                 p.time_slice_remaining -= time_used;
@@ -412,25 +418,17 @@ pub fn initScheduler() void {
     }
 
     scheduler = kalloc.storeKernel(Scheduler);
-    scheduler.ready_queues = [_]mem.Array(*Process){
-        mem.Array(*Process).initKernel(),
-        mem.Array(*Process).initKernel(),
-        mem.Array(*Process).initKernel(),
-        mem.Array(*Process).initKernel(),
-        mem.Array(*Process).initKernel(),
-    };
-
-    scheduler.init();
+    scheduler.?.init();
 }
 
 pub fn scheduleNext() void {
     @setRuntimeSafety(false);
-    scheduler.schedule();
+    scheduler.?.schedule();
 }
 
 pub fn yieldCPU() void {
     @setRuntimeSafety(false);
-    scheduler.yield();
+    scheduler.?.yield();
 }
 
 pub fn getCurrentProcess() ?*Process {
@@ -439,5 +437,5 @@ pub fn getCurrentProcess() ?*Process {
 
 pub fn printSchedulerStats() void {
     @setRuntimeSafety(false);
-    scheduler.printStatistics();
+    scheduler.?.printStatistics();
 }

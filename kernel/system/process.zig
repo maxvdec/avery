@@ -203,7 +203,7 @@ pub const Process = struct {
         kernel_ext.* = .{};
         kernel_ext.requestTerminal();
         kernel_ext.addProcess(proc);
-        kernel_ext.setScheduler(sch.scheduler);
+        kernel_ext.setScheduler(sch.scheduler.?);
         drive = kalloc.storeKernel(ata.AtaDrive);
         drive.* = fusion.getAtaController().master;
         kernel_ext.setAtaDrive(drive);
@@ -215,7 +215,7 @@ pub const Process = struct {
 
         vmm.tempUnmap(code_vaddr);
 
-        sch.scheduler.addProcess(proc);
+        sch.scheduler.?.addProcess(proc);
 
         return proc;
     }
@@ -326,12 +326,12 @@ pub const Process = struct {
         @setRuntimeSafety(false);
 
         self.state = ProcessState.Terminated;
-        sch.scheduler.removeProcess(self);
+        sch.scheduler.?.removeProcess(self);
         self.cleanup();
 
         if (current_process != null and current_process.?.pid == self.pid) {
             current_process = null;
-            sch.scheduler.schedule();
+            sch.scheduler.?.schedule();
         }
     }
 
@@ -375,6 +375,18 @@ pub const Process = struct {
                 }
             }
         }
+    }
+
+    pub fn createIdleProcess() void {
+        @setRuntimeSafety(false);
+        const program: []const u8 = &[_]u8{
+            0xEB, 0xFE, // jmp $
+        };
+
+        var process = Process.createProcess(program, 0, .Idle);
+        process.?.pid = 0;
+        process.?.state = .Ready;
+        next_pid = 1;
     }
 
     pub fn debugProcessContext(ctx: *ProcessContext) void {

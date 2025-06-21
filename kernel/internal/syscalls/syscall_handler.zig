@@ -1,20 +1,20 @@
-const out = @import("output");
 const alloc = @import("allocator");
-const vfs = @import("vfs");
-const ata = @import("ata");
-const terminal = @import("terminal");
-const mem = @import("memory");
-const ext = @import("extensions");
-const scheduler = @import("scheduler");
-const proc = @import("process");
-const input = @import("input");
 const arf = @import("arf");
-const pmm = @import("physical_mem");
-const vmm = @import("virtual_mem");
-const unix = @import("rtc");
-const kalloc = @import("kern_allocator");
+const ata = @import("ata");
+const ext = @import("extensions");
+const input = @import("input");
 const irq = @import("irq");
+const kalloc = @import("kern_allocator");
 const keyboard = @import("keyboard");
+const mem = @import("memory");
+const out = @import("output");
+const pmm = @import("physical_mem");
+const proc = @import("process");
+const scheduler = @import("scheduler");
+const terminal = @import("terminal");
+const unix = @import("rtc");
+const vfs = @import("vfs");
+const vmm = @import("virtual_mem");
 
 const FLAG_READ = 0x1;
 const FLAG_WRITE = 0x2;
@@ -43,9 +43,12 @@ export fn syscall_handler(
     arg5: u32,
 ) u64 {
     @setRuntimeSafety(false);
-    asm volatile ("sti");
     const extensions = @as(*ext.KernelExtensions, @ptrFromInt(kernel_extensions));
     const sch = @as(*scheduler.Scheduler, @ptrFromInt(extensions.scheduler));
+    scheduler.scheduler = sch;
+    scheduler.Scheduler.refreshInterrupts();
+    asm volatile ("sti");
+
     keyboard.enableKeyboard();
     irq.remap();
 
@@ -100,6 +103,14 @@ export fn syscall_handler(
     }
 
     return retval;
+}
+
+fn blockProcess(extensions: *ext.KernelExtensions) void {
+    const process = @as(*proc.Process, @ptrFromInt(extensions.mainProcess));
+    process.state = .Blocked;
+    const sch = @as(*scheduler.Scheduler, @ptrFromInt(extensions.scheduler));
+    sch.blockProcess(process);
+    sch.schedule();
 }
 
 fn makeFileDescriptors(extensions: *ext.KernelExtensions) mem.Array(proc.FileDescriptor) {
@@ -187,6 +198,13 @@ fn open(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.Kernel
     return SUCCESS;
 }
 
+fn getKeyboardChar(extensions: *ext.KernelExtensions) u8 {
+    return keyboard.getChar() orelse {
+        blockProcess(extensions);
+        return getKeyboardChar(extensions);
+    };
+}
+
 fn read(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.KernelExtensions) u64 {
     @setRuntimeSafety(false);
     const fd = arg1;
@@ -217,7 +235,7 @@ fn read(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.Kernel
     }
 
     switch (fd) {
-        0 => {
+        0 => { // stdin
             const framebuffer_terminal = @as(*terminal.FramebufferTerminal, @ptrFromInt(extensions.framebufferTerminal));
             out.switchToGraphics(framebuffer_terminal);
 
@@ -242,46 +260,60 @@ fn read(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.Kernel
                 }
             }
 
-            if (keyboard.currentChar == 0) {
-                return SYSCALL_BLOCK;
-            }
+            while (state.reading) {
+                out.preserveMode();
+                out.switchToSerial();
+                out.println("Reading input...");
+                if (!keyboard.hasInput()) {
+                    out.println("NO INPUT");
+                    blockProcess(extensions);
 
-            const chr = keyboard.currentChar;
-            keyboard.currentChar = 0;
-
-            if (chr == 0x08) {
-                if (state.position > 0) {
-                    state.position -= 1;
-                    state.buffer.?[state.position] = 0;
-                    out.printchar(chr);
+                    return SYSCALL_BLOCK;
+                } else {
+                    out.println("There's some input from the keyboard");
                 }
-                return SYSCALL_BLOCK;
-            } else if (chr == '\n' or chr == '\r') {
-                out.printchar(chr);
-                state.buffer.?[state.position] = chr;
-                const bytes_read = state.position + 1;
-                state.reading = false;
-                return bytes_read;
-            } else {
-                if (state.position < state.max_len - 1) {
+
+                const chr = keyboard.getChar() orelse {
+                    return SYSCALL_BLOCK;
+                };
+
+                if (chr == 0x08) { // Backspace
+                    if (state.position > 0) {
+                        state.position -= 1;
+                        state.buffer.?[state.position] = 0;
+                        out.printchar(chr);
+                    }
+                } else if (chr == '\n' or chr == '\r') { // Enter
+                    out.printchar(chr);
                     state.buffer.?[state.position] = chr;
-                    state.position += 1;
-                    out.printchar(chr);
-                }
-
-                if (state.position >= state.max_len) {
+                    const bytes_read = state.position + 1;
                     state.reading = false;
-                    return len;
+                    return bytes_read;
+                } else {
+                    if (state.position < state.max_len - 1) {
+                        state.buffer.?[state.position] = chr;
+                        state.position += 1;
+                        out.printchar(chr);
+                    }
+
+                    if (state.position >= state.max_len) {
+                        state.reading = false;
+                        return len;
+                    }
                 }
 
-                return SYSCALL_BLOCK;
+                if (!keyboard.hasInput()) {
+                    return SYSCALL_BLOCK;
+                }
             }
+
+            return SUCCESS;
         },
         1 => {
-            return INVALID_FD;
+            return INVALID_FD; // Can't read from stdout
         },
         2 => {
-            return INVALID_FD;
+            return INVALID_FD; // Can't read from stderr
         },
         else => {
             return INVALID_FD; // Invalid file descriptor
