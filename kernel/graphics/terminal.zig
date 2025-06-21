@@ -228,6 +228,7 @@ pub const FramebufferTerminal = struct {
                 }
             },
             0x00 => {},
+            0xFF => {},
             else => {
                 if (self.cursor_enabled) {
                     self.restoreCharUnderCursor();

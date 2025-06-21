@@ -55,6 +55,8 @@ fn getCurrentTicks() u32 {
 
 pub const Scheduler = struct {
     ready_queues: [5]mem.Array(*Process),
+    blocked_queue: mem.Array(*Process),
+    blocked_processes: u32 = 0,
     current_queue: usize = 0,
     last_schedule_time: u32 = 0,
     total_processes: u32 = 0,
@@ -65,6 +67,7 @@ pub const Scheduler = struct {
         for (0..5) |i| {
             self.ready_queues[i] = mem.Array(*Process).initKernel();
         }
+        self.blocked_queue = mem.Array(*Process).initKernel();
         self.last_schedule_time = getCurrentTicks();
         self.scheduling_in_progress = false;
         pit.setSchedulerCallback(timerInterruptHandler);
@@ -95,6 +98,11 @@ pub const Scheduler = struct {
             out.printn(self.ready_queues[priority_level].len - 1);
             out.println("");
             out.restoreMode();
+        } else if (process.state == .Blocked) {
+            self.blocked_queue.append(process);
+            self.blocked_processes += 1;
+        } else {
+            return;
         }
     }
 
@@ -107,6 +115,15 @@ pub const Scheduler = struct {
                 if (p.pid == process.pid) {
                     return true;
                 }
+            }
+        }
+        return false;
+    }
+
+    fn isProcessBlocked(self: *Scheduler, process: *Process) bool {
+        for (self.blocked_queue.iterate()) |p| {
+            if (p.pid == process.pid) {
+                return true;
             }
         }
         return false;
@@ -140,6 +157,67 @@ pub const Scheduler = struct {
                 j += 1;
             }
         }
+
+        var j: usize = 0;
+        while (j < self.blocked_queue.len) {
+            const proc_in_queue = self.blocked_queue.get(j) orelse break;
+            if (proc_in_queue.pid == process.pid) {
+                _ = self.blocked_queue.remove(j);
+                if (self.total_processes > 0) {
+                    self.total_processes -= 1;
+                }
+
+                out.preserveMode();
+                out.switchToSerial();
+                out.print("Removed process ");
+                out.printn(process.pid);
+                out.print(" from blocked queue");
+                out.println("");
+                out.restoreMode();
+                return;
+            }
+            j += 1;
+        }
+    }
+
+    pub fn blockProcess(self: *Scheduler, process: *Process) void {
+        @setRuntimeSafety(false);
+
+        if (process.pid == 0) return;
+
+        self.removeProcess(process);
+
+        process.state = .Blocked;
+
+        self.addProcess(process);
+
+        out.preserveMode();
+        out.switchToSerial();
+        out.print("Blocked process ");
+        out.printn(process.pid);
+        out.print(" in blocked queue");
+        out.println("");
+        out.restoreMode();
+    }
+
+    pub fn unblockProcess(self: *Scheduler, process: *Process) void {
+        @setRuntimeSafety(false);
+
+        if (process.pid == 0) return;
+
+        self.removeProcess(process);
+
+        process.state = .Ready;
+
+        self.addProcess(process);
+
+        out.preserveMode();
+        out.switchToSerial();
+        out.print("Unblocked process ");
+        out.printn(process.pid);
+        out.print(" in ready queue");
+        out.println("");
+        out.restoreMode();
     }
 
     pub fn findNextProcess(self: *Scheduler) ?*Process {
@@ -208,6 +286,12 @@ pub const Scheduler = struct {
             return;
         }
         self.scheduling_in_progress = true;
+
+        if (current_process) |p| {
+            if (p.state == .Blocked) {
+                current_process = null;
+            }
+        }
 
         const next_process = self.findNextProcess();
 

@@ -68,11 +68,15 @@ $(OUTDIR)/avery.iso: $(BUILD_DIR)/avery.bin
 clean:
 	rm -rf $(BUILD_DIR)/* avery.iso $(ISO_DIR) $(ZIG_DIR)
 
-.PHONY: all clean run stdio terminal
+.PHONY: all clean run stdio terminal debug
 
 run: $(OUTDIR)/avery.iso
 	@clear
-	@qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -serial stdio 
+	@qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -serial stdio
+	
+debug: $(OUTDIR)/avery.iso
+	@clear
+	@qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -serial stdio -s -S
 
 nographic:
 	qemu-system-x86_64 -drive file=disk.img,format=raw -cdrom avery.iso -m 128M -boot d -nographic

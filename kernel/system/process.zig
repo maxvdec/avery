@@ -9,6 +9,7 @@ const ext = @import("extensions");
 const sch = @import("scheduler");
 const fusion = @import("fusion");
 const ata = @import("ata");
+const input = @import("input");
 
 pub const ProcessState = enum {
     Ready,
@@ -112,6 +113,7 @@ pub const Process = struct {
     starvation_threshold: u32 = 1000,
 
     initialized: bool = false,
+    input_state: ?*input.InputState = null,
 
     fn setupStack(self: *Process) u32 {
         @setRuntimeSafety(false);

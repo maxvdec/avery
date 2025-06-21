@@ -25,6 +25,7 @@ const MODE_READ = 0x1;
 const MODE_WRITE = 0x2;
 
 const INVALID_FD: u64 = 0xFFFFFFFFFFFFFFFF;
+const SYSCALL_BLOCK: u32 = 0xFFFFFFFE;
 const SUCCESS: u64 = 0;
 
 extern var kernel_extensions: u32;
@@ -42,17 +43,11 @@ export fn syscall_handler(
     arg5: u32,
 ) u64 {
     @setRuntimeSafety(false);
+    asm volatile ("sti");
     const extensions = @as(*ext.KernelExtensions, @ptrFromInt(kernel_extensions));
     const sch = @as(*scheduler.Scheduler, @ptrFromInt(extensions.scheduler));
     keyboard.enableKeyboard();
     irq.remap();
-
-    var eflags: u32 = undefined;
-    asm volatile ("pushfd; popl %[eflags]"
-        : [eflags] "=r" (eflags),
-        :
-        : "memory"
-    );
 
     out.initOutputs();
     out.switchToSerial();
@@ -69,27 +64,41 @@ export fn syscall_handler(
     out.print(" Arg 5: ");
     out.printHex(arg5);
     out.println("");
-    out.print("Flags: ");
-    out.printHex(eflags);
-    out.println("");
     kalloc.restore(@as(*kalloc.Snapshot, @ptrFromInt(extensions.kernelAllocSnapshot)).*);
     const retval = switch (syscall_number) {
-        0x00 => return read(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x01 => return write(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x02 => return open(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x03 => return close(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x04 => return procSyscall(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x05 => return exit(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x06 => return getpid(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x07 => return remove(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x09 => return newdir(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x0B => return memmap(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x0C => return getunix(arg1, arg2, arg3, arg4, arg5, extensions),
-        0x0D => return version(arg1, arg2, arg3, arg4, arg5, extensions),
-        else => return 0,
+        0x00 => read(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x01 => write(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x02 => open(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x03 => close(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x04 => procSyscall(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x05 => exit(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x06 => getpid(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x07 => remove(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x09 => newdir(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x0B => memmap(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x0C => getunix(arg1, arg2, arg3, arg4, arg5, extensions),
+        0x0D => version(arg1, arg2, arg3, arg4, arg5, extensions),
+        else => 0,
     };
 
-    sch.schedule();
+    out.switchToSerial();
+    out.print("Return Val: ");
+    out.printHex(retval);
+    out.println("");
+
+    const process = @as(*proc.Process, @ptrFromInt(extensions.mainProcess));
+
+    if (retval == SYSCALL_BLOCK) {
+        sch.blockProcess(process);
+        sch.schedule();
+
+        return retval;
+    }
+
+    if (process.state == .Blocked) {
+        sch.unblockProcess(process);
+    }
+
     return retval;
 }
 
@@ -155,7 +164,7 @@ fn open(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.Kernel
 
     var file_descriptors = makeFileDescriptors(extensions);
 
-    const id = file_descriptors.len + 1;
+    const id = file_descriptors.len + 3;
 
     const null_byte = mem.findPtr(u8, path, 0x00);
 
@@ -211,9 +220,62 @@ fn read(arg1: u32, arg2: u32, arg3: u32, _: u32, _: u32, extensions: *ext.Kernel
         0 => {
             const framebuffer_terminal = @as(*terminal.FramebufferTerminal, @ptrFromInt(extensions.framebufferTerminal));
             out.switchToGraphics(framebuffer_terminal);
-            const data = input.readbytes(len);
-            _ = memcpy(buf, data.ptr, len);
-            return SUCCESS; // Simulate reading from stdin
+
+            const process = @as(*proc.Process, @ptrFromInt(extensions.mainProcess));
+            if (process.input_state == null) {
+                process.input_state = kalloc.storeKernel(input.InputState);
+                const state = process.input_state.?;
+                state.* = input.InputState.new();
+            }
+
+            var state = process.input_state.?;
+
+            if (!state.reading) {
+                state.reset();
+                state.buffer = buf;
+                state.max_len = len;
+                state.position = 0;
+                state.reading = true;
+
+                for (0..len) |i| {
+                    state.buffer.?[i] = 0x00;
+                }
+            }
+
+            if (keyboard.currentChar == 0) {
+                return SYSCALL_BLOCK;
+            }
+
+            const chr = keyboard.currentChar;
+            keyboard.currentChar = 0;
+
+            if (chr == 0x08) {
+                if (state.position > 0) {
+                    state.position -= 1;
+                    state.buffer.?[state.position] = 0;
+                    out.printchar(chr);
+                }
+                return SYSCALL_BLOCK;
+            } else if (chr == '\n' or chr == '\r') {
+                out.printchar(chr);
+                state.buffer.?[state.position] = chr;
+                const bytes_read = state.position + 1;
+                state.reading = false;
+                return bytes_read;
+            } else {
+                if (state.position < state.max_len - 1) {
+                    state.buffer.?[state.position] = chr;
+                    state.position += 1;
+                    out.printchar(chr);
+                }
+
+                if (state.position >= state.max_len) {
+                    state.reading = false;
+                    return len;
+                }
+
+                return SYSCALL_BLOCK;
+            }
         },
         1 => {
             return INVALID_FD;
