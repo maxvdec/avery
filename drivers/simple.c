@@ -1,8 +1,11 @@
 
 #include "avery.h"
 
+void hello() { avprint("Hello, from another function!\n"); }
+
 avery_status main() {
     avprint("Hello, World!\n");
+    hello();
     return AVERY_OK;
 }
 

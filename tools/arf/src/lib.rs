@@ -602,6 +602,15 @@ fn get_fixes(elf: &ElfBytes<AnyEndian>) -> Vec<Fix> {
     };
 
     for section_header in section_headers {
+        let is_relocation_section = match section_header.sh_type {
+            SHT_REL | SHT_RELA => true,
+            _ => false,
+        };
+
+        if !is_relocation_section {
+            continue;
+        }
+
         match section_header.sh_type {
             SHT_REL => {
                 if let Ok(section_data) = elf.section_data(&section_header) {
@@ -614,12 +623,18 @@ fn get_fixes(elf: &ElfBytes<AnyEndian>) -> Vec<Fix> {
                     for rel in rel_entries {
                         let symbol_index = rel.r_sym as usize;
 
-                        if let Ok(symbol) = symbol_table.get(symbol_index) {
-                            let symbol_name = symbol_str
-                                .get(symbol.st_name as usize)
-                                .unwrap_or("<unknown>");
+                        // Skip relocations that don't reference a symbol
+                        if symbol_index == 0 {
+                            continue;
+                        }
 
-                            if symbol.st_shndx == elf::abi::SHN_UNDEF && !symbol_name.is_empty() {
+                        // Get the symbol from the symbol table
+                        if let Ok(symbol) = symbol_table.get(symbol_index) {
+                            // Extract the symbol name
+                            let symbol_name = symbol_str.get(symbol.st_name as usize).unwrap_or("");
+
+                            // Only add if we have a valid symbol name
+                            if !symbol_name.is_empty() {
                                 fixes.push(Fix {
                                     name: symbol_name.to_string(),
                                     offset: rel.r_offset as u32,
@@ -640,12 +655,18 @@ fn get_fixes(elf: &ElfBytes<AnyEndian>) -> Vec<Fix> {
                     for rela in rela_entries {
                         let symbol_index = rela.r_sym as usize;
 
-                        if let Ok(symbol) = symbol_table.get(symbol_index) {
-                            let symbol_name = symbol_str
-                                .get(symbol.st_name as usize)
-                                .unwrap_or("<unknown>");
+                        // Skip relocations that don't reference a symbol
+                        if symbol_index == 0 {
+                            continue;
+                        }
 
-                            if symbol.st_shndx == elf::abi::SHN_UNDEF && !symbol_name.is_empty() {
+                        // Get the symbol from the symbol table
+                        if let Ok(symbol) = symbol_table.get(symbol_index) {
+                            // Extract the symbol name
+                            let symbol_name = symbol_str.get(symbol.st_name as usize).unwrap_or("");
+
+                            // Only add if we have a valid symbol name
+                            if !symbol_name.is_empty() {
                                 fixes.push(Fix {
                                     name: symbol_name.to_string(),
                                     offset: rela.r_offset as u32,
@@ -659,6 +680,7 @@ fn get_fixes(elf: &ElfBytes<AnyEndian>) -> Vec<Fix> {
         }
     }
 
+    // Remove duplicates while preserving order
     fixes.sort_by(|a, b| a.name.cmp(&b.name).then(a.offset.cmp(&b.offset)));
     fixes.dedup_by(|a, b| a.name == b.name && a.offset == b.offset);
 
