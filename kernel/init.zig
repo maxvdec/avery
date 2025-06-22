@@ -27,6 +27,8 @@ const process = @import("process");
 const kalloc = @import("kern_allocator");
 const serial = @import("serial");
 const sch = @import("scheduler");
+const recovery = @import("recovery");
+const drv_load = @import("boot_drv");
 
 const MULTIBOOT2_HEADER_MAGIC: u32 = 0x36d76289;
 
@@ -120,6 +122,13 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
 
     // Initialize the terminal
     out.switchToGraphics(fbTerminal);
+
+    recovery.systemIntegrityChecks(&fusion.getAtaController().master);
+    const drivers = drv_load.findDrivers(&fusion.getAtaController().master);
+    for (drivers.coerce()) |drv| {
+        out.print("Loaded driver: ");
+        out.println(drv.name);
+    }
 
     sch.initScheduler();
 

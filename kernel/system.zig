@@ -111,7 +111,7 @@ pub const regs = packed struct {
 pub fn panic(msg: []const u8) noreturn {
     @setRuntimeSafety(false);
     const out = @import("output");
-    out.setTextColor(out.VgaTextColor.Red, out.VgaTextColor.Black);
+    out.setTextColor(out.VgaTextColor.White, out.VgaTextColor.Black);
     out.clear();
     out.println("The Avery Kernel panicked!\n");
     out.println(msg);

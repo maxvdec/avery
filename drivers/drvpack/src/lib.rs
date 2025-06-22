@@ -53,6 +53,7 @@ impl DriverFile {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(HEADER.as_bytes());
         bytes.push(self.type_byte);
         bytes.extend_from_slice(&self.manufacturer.to_le_bytes());
         bytes.extend_from_slice(&self.device_id.to_le_bytes());
@@ -71,7 +72,7 @@ impl DriverFile {
     }
 }
 
-const HEADER: &str = "AVDRIV01";
+const HEADER: &str = "AVDRIV02";
 
 pub struct Options {
     driver_name: String,

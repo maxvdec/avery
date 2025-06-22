@@ -1,4 +1,4 @@
-# The Avery Driver Format - 0.1
+# The Avery Driver Format - 0.2
 
 Drivers are an important part of the system. They are responsible for handling various parts of the system and provide interfacing for other things like external peripherals and modify and extend the kernel. Drivers are what are called **kernel modules** in other systems. [mOS](https://github.com/maxvdec/mOS) offers the most common drivers for standard usecases, within a collection named **Aspire**.
 
@@ -81,7 +81,7 @@ We've created an special format for dealing with drivers. This format is easy to
 
 ### The Header
 
-The header is a simple array of bytes that indicate the format. In this case, we find eight bytes: `AVDRIVxx`. Where `x` are numbers and represent the version (`AVDRIV01` would correspond to the version **0.1**).
+The header is a simple array of bytes that indicate the format. In this case, we find eight bytes: `AVDRIVxx`. Where `x` are numbers and represent the version (`AVDRIV02` would correspond to the version **0.2**).
 
 ### The configuration types
 
@@ -121,7 +121,7 @@ avery_status init(u32 driverId) {}
 avery_status destroy() {}
 ```
 
-### The Empty Driver (0x0)
+### The Utility Driver (0x0)
 
 This type only requires the default functions to be provided (`init()` and `destroy()`).
 
@@ -208,20 +208,16 @@ avery_fstat getstats(avery_device* dev) {}
 
 ### The Terminal / Serial Output (0x7) [NOT IMPLEMENTED]
 
-### The PCI Driver (0x8) [NOT IMPLEMENTED]
+### The Audio Driver (0x8) [NOT IMPLEMENTED]
 
-### The USB Driver (0x9) [NOT IMPLEMENTED]
+### The Video Graphics Driver (0x9) [NOT IMPLEMENTED]
 
-### The Audio Driver (0xA) [NOT IMPLEMENTED]
+### The Input Driver (0xA) [IN PROGRESS]
 
-### The Video Graphics Driver (0xB) [NOT IMPLEMENTED]
+### The Human Interface Device Driver (0xB) [IN PROGRESS]
 
-### The Input Driver (0xC) [IN PROGRESS]
+### The Power Supply Driver (0xC) [NOT IMPLEMENTED]
 
-### The Human Interface Device Driver (0xD) [IN PROGRESS]
+### The Thermal Driver (0xD) [NOT IMPLEMENTED]
 
-### The Power Supply Driver (0xE) [NOT IMPLEMENTED]
-
-### The Thermal Driver (0xF) [NOT IMPLEMENTED]
-
-### The Bus Driver (0x10) [NOT IMPLEMENTED]
+### The Bus Driver (0xE) [NOT IMPLEMENTED]

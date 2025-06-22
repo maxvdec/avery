@@ -248,14 +248,13 @@ pub fn findFileInDirectory(drive: *ata.AtaDrive, fileName: []const u8, region: u
     return 0;
 }
 
-pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]const u8 {
+pub fn readFile(drive: *ata.AtaDrive, filePath: []const u8, partition: u32) ?[]const u8 {
     @setRuntimeSafety(false);
     const partition_data = detectPartitions(drive);
     if (!partition_data[partition].exists) {
         out.println("Partition does not exist.");
         return null;
     }
-    var filePath: []const u8 = fileName;
     var dirPath: []const u8 = "";
     var bareFileName: []const u8 = "";
     const lastSlashIndex = mem.findLast(u8, filePath, '/');
@@ -263,13 +262,13 @@ pub fn readFile(drive: *ata.AtaDrive, fileName: []const u8, partition: u32) ?[]c
         dirPath = filePath[0..lastSlashIndex.?];
         bareFileName = filePath[lastSlashIndex.? + 1 ..];
     } else {
-        bareFileName = fileName;
+        bareFileName = filePath;
     }
     const dirRegion = traverseDirectory(drive, dirPath, partition);
     var region = findFileInDirectory(drive, bareFileName, dirRegion);
     if (region == 0) {
         out.print("File not found: ");
-        out.println(bareFileName);
+        out.println(filePath);
         return null;
     }
     const sector_data = ata.readSectors(drive, region, 1);

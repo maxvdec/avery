@@ -15,6 +15,12 @@ pub fn copy(comptime T: type, dest: [*]T, src: [*]const T, count: usize) void {
     _ = memcpy(dest_bytes, src_bytes, count * size);
 }
 
+pub fn copyBytes(dest: [*]u8, src: []const u8) void {
+    for (0..src.len) |i| {
+        dest[i] = src[i];
+    }
+}
+
 pub fn Pointer(comptime T: type) type {
     return struct {
         data: [*]T,
@@ -317,6 +323,13 @@ pub fn Array(comptime T: type) type {
             self.ptr = null;
             self.len = 0;
             self.capacity = 0;
+        }
+
+        pub fn last(self: *Self) ?T {
+            if (self.len == 0) {
+                return null;
+            }
+            return self.ptr.?[self.len - 1];
         }
 
         pub fn pop(self: *Self) ?T {
@@ -1046,4 +1059,30 @@ pub fn copySafe(src: []const u8, dst: [*]u8, len: usize) void {
             dst[i] = 0;
         }
     }
+}
+
+pub fn split(str_data: []const u8, delimiter: u8) Array([]const u8) {
+    @setRuntimeSafety(false);
+    var result = Array([]const u8).init();
+
+    if (str_data.len == 0) {
+        return result;
+    }
+
+    var start: usize = 0;
+
+    for (0..str_data.len) |i| {
+        if (str_data[i] == delimiter) {
+            if (i > start) {
+                result.append(str_data[start..i]);
+            }
+            start = i + 1;
+        }
+    }
+
+    if (start < str_data.len) {
+        result.append(str_data[start..]);
+    }
+
+    return result;
 }
