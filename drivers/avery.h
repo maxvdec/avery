@@ -14,6 +14,7 @@
 #define u32 unsigned int
 #define u64 unsigned long long
 #define bool char
+#define usize unsigned long
 
 #define avery_status int
 #define avery_buf void *
@@ -42,6 +43,9 @@ extern void outw(u16 port, u16 value);
 
 /// Send a long (u32) to the specified port.
 extern void outl(u16 port, u32 value);
+
+/// Recieve a buffer (void *) from the kernel allocator
+extern void *kalloc(usize size);
 
 /// Enum representing different types of ports.
 typedef enum {
