@@ -223,3 +223,5 @@ avery_fstat getstats(avery_device* dev) {}
 ### The Power Supply Driver (0xE) [NOT IMPLEMENTED]
 
 ### The Thermal Driver (0xF) [NOT IMPLEMENTED]
+
+### The Bus Driver (0x10) [NOT IMPLEMENTED]
