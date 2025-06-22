@@ -129,6 +129,7 @@ export fn kernel_main(magic: u32, addr: u32) noreturn {
         out.print("Loaded driver: ");
         out.println(drv.name);
     }
+    drv_load.startDrivers(drivers);
 
     sch.initScheduler();
 

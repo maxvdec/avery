@@ -6,6 +6,7 @@ const mem = @import("memory");
 const dir_structure = @import("dir_structure");
 const path = @import("path");
 const alloc = @import("allocator");
+const drv_parse = @import("drv_parse");
 
 pub fn findDrivers(drive: *ata.AtaDrive) mem.Array(driver.Driver) {
     @setRuntimeSafety(false);
@@ -40,4 +41,13 @@ pub fn findDrivers(drive: *ata.AtaDrive) mem.Array(driver.Driver) {
     }
 
     return drivers;
+}
+
+pub fn startDrivers(drivers: mem.Array(driver.Driver)) void {
+    for (drivers.iterate()) |drv| {
+        const rawDrv = drv_parse.makeRawDriver(drv);
+        const finalDrv = drv_parse.loadDriver(rawDrv);
+        out.printHex(@intFromEnum(finalDrv.?.typ));
+        out.println("");
+    }
 }

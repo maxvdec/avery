@@ -61,9 +61,20 @@ pub const Library = struct {
 pub const Fix = struct {
     name: []const u8,
     offset: usize,
+
+    pub fn patch(self: *Fix, addr: usize, exec: *Executable) void {
+        if (self.offset + 4 > exec.data.len) {
+            return;
+        }
+
+        exec.data[self.offset] = @truncate(addr);
+        exec.data[self.offset + 1] = @truncate(addr >> 8);
+        exec.data[self.offset + 2] = @truncate(addr >> 16);
+        exec.data[self.offset + 3] = @truncate(addr >> 24);
+    }
 };
 
-pub const Executable = struct { header: Header, sections: []Section, symbols: []Symbol, libraries: []Library, fixes: []Fix, entryPoint: usize, extensions: []u8, library: bool, data: []const u8, fileSize: usize, offsetEntryPoint: usize };
+pub const Executable = struct { header: Header, sections: []Section, symbols: []Symbol, libraries: []Library, fixes: []Fix, entryPoint: usize, extensions: []u8, library: bool, data: []u8, fileSize: usize, offsetEntryPoint: usize };
 
 pub fn loadExecutable(data: []const u8) ?Executable {
     @setRuntimeSafety(false);
@@ -217,7 +228,13 @@ pub fn loadExecutable(data: []const u8) ?Executable {
         }
     }
 
-    exec.data = stream.getRemaining();
+    const remaining_data = stream.getRemaining();
+    if (remaining_data.len > 0) {
+        const data_ptr = kalloc.requestKernel(remaining_data.len) orelse return null;
+        const data_copy = data_ptr[0..remaining_data.len];
+        @memcpy(data_copy, remaining_data);
+        exec.data = data_copy;
+    }
 
     return exec;
 }
