@@ -7,6 +7,7 @@ const dir_structure = @import("dir_structure");
 const path = @import("path");
 const alloc = @import("allocator");
 const drv_parse = @import("drv_parse");
+const sys = @import("system");
 
 pub fn findDrivers(drive: *ata.AtaDrive) mem.Array(driver.Driver) {
     @setRuntimeSafety(false);
@@ -47,5 +48,10 @@ pub fn startDrivers(drivers: mem.Array(driver.Driver)) void {
     for (drivers.iterate()) |drv| {
         const rawDrv = drv_parse.makeRawDriver(drv);
         const finalDrv = drv_parse.loadDriver(rawDrv);
+        if (finalDrv == null) {
+            sys.panic("Could not load driver");
+            continue;
+        }
+        drv_parse.executeDriver(finalDrv.?);
     }
 }

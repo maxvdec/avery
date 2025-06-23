@@ -4,6 +4,7 @@ const kalloc = @import("kern_allocator");
 const mem = @import("memory");
 const out = @import("output");
 const sys = @import("system");
+const drv_type = @import("drv_types");
 
 pub const RawDriver = struct { typ: driver.DriverType, drv: driver.Driver, exec: *arf.Executable };
 
@@ -18,6 +19,7 @@ pub const LoadedDriver = struct {
     functions: mem.Array(DriverFunction),
     base_addr: usize,
     is_loaded: bool,
+    finalDrv: ?drv_type.Driver,
 };
 
 pub const NativeFunction = struct {
@@ -47,6 +49,7 @@ pub fn loadDriver(rawDrv: *RawDriver) ?*LoadedDriver {
         .functions = mem.Array(DriverFunction).initKernel(),
         .base_addr = 0,
         .is_loaded = false,
+        .finalDrv = null,
     };
 
     const NATIVE_FUNCTIONS = &[_]NativeFunction{
@@ -81,6 +84,9 @@ pub fn loadDriver(rawDrv: *RawDriver) ?*LoadedDriver {
         for (0..rawDrv.exec.symbols.len) |j| {
             const symbol = &rawDrv.exec.symbols[j];
             if (mem.compareBytes(u8, fix.name, symbol.name)) {
+                out.switchToSerial();
+                out.print("Fixing symbol ");
+                out.println(symbol.name);
                 fix.patch(symbol.offset + loadedDrv.base_addr, rawDrv.exec);
             }
         }
@@ -103,5 +109,41 @@ fn buildFunctionTable(rawDrv: *RawDriver, loadedDrv: *LoadedDriver) void {
                 .addr = symbol.offset + loadedDrv.base_addr,
             });
         }
+    }
+}
+
+pub fn executeDriver(loadedDrv: *LoadedDriver) void {
+    switch (loadedDrv.typ) {
+        .Utility => {
+            var init: ?*fn () drv_type.AveryStatus = null;
+            var destroy: ?*fn () drv_type.AveryStatus = null;
+            for (loadedDrv.functions.coerce()) |fun| {
+                if (mem.compareBytes(u8, fun.name, "init")) {
+                    init = @ptrFromInt(fun.addr);
+                } else if (mem.compareBytes(u8, fun.name, "destroy")) {
+                    destroy = @ptrFromInt(fun.addr);
+                }
+            }
+            if (init == null or destroy == null) {
+                sys.panic("Missing init or destroy function");
+            }
+            loadedDrv.finalDrv = .{ .utility = .{
+                .init = init.?,
+                .destroy = destroy.?,
+            } };
+            out.switchToSerial();
+            mem.inspectChunk(loadedDrv.base_addr, 125);
+            var status = loadedDrv.finalDrv.?.utility.init();
+            while (true) {}
+            if (status == drv_type.STATUS_OK) {
+                status = loadedDrv.finalDrv.?.utility.destroy();
+                if (status != drv_type.STATUS_OK) {
+                    sys.panic("Driver destruction failed");
+                }
+            } else {
+                sys.panic("Driver initializiation failed");
+            }
+        },
+        else => sys.panic("Driver not implemented yet"),
     }
 }

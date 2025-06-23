@@ -1102,3 +1102,23 @@ pub fn contains(comptime T: type, array: []const T, elem: T) bool {
     }
     return false;
 }
+
+pub fn inspectChunk(addr: usize, n: usize) void {
+    @setRuntimeSafety(false);
+    const ptr = @as([*]const u8, @ptrFromInt(addr));
+
+    var i: usize = 0;
+    while (i < n) {
+        out.printHex(addr + i);
+        out.print(" | ");
+
+        var j: usize = 0;
+        while (j < 15 and i + j < n) : (j += 1) {
+            out.printHex(ptr[i + j]);
+            out.print(" ");
+        }
+
+        out.println("");
+        i += 15;
+    }
+}
