@@ -91,14 +91,20 @@ pub fn loadDriver(path: []const u8, data: []const u8) ?*Driver {
     const driver_name = stream.getUntil(0x0).?;
     driver.name = driver_name;
 
+    stream.skip(1);
+
     const driver_description = stream.getUntil(0x0).?;
     driver.description = driver_description;
+
+    stream.skip(1);
 
     const driver_version = stream.get(3).?;
     driver.version = driver_version[0..3].*;
 
     const hash = stream.getUntil(0x0).?;
     driver.hash = hash;
+
+    stream.skip(1);
 
     const arf_data = stream.getRemaining();
     driver.arf_data = arf_data;

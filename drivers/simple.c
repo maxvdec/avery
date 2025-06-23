@@ -3,7 +3,7 @@
 
 void hello() { avprint("Hello, from another function!\n"); }
 
-avery_status main() {
+avery_status init() {
     avprint("Hello, World!\n");
     hello();
     return AVERY_OK;

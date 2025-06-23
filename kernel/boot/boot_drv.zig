@@ -47,7 +47,5 @@ pub fn startDrivers(drivers: mem.Array(driver.Driver)) void {
     for (drivers.iterate()) |drv| {
         const rawDrv = drv_parse.makeRawDriver(drv);
         const finalDrv = drv_parse.loadDriver(rawDrv);
-        out.printHex(@intFromEnum(finalDrv.?.typ));
-        out.println("");
     }
 }

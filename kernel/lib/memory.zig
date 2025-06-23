@@ -1023,7 +1023,7 @@ pub inline fn getStackBottom() usize {
 pub fn append(comptime T: type, array: []T, elem: T) []T {
     @setRuntimeSafety(false);
     const new_len = array.len + 1;
-    const result = alloc.request(new_len * @sizeOf(T)) orelse {
+    const result = kalloc.requestKernel(new_len * @sizeOf(T)) orelse {
         sys.panic("Failed to allocate memory for append");
     };
 
@@ -1085,4 +1085,20 @@ pub fn split(str_data: []const u8, delimiter: u8) Array([]const u8) {
     }
 
     return result;
+}
+
+pub fn contains(comptime T: type, array: []const T, elem: T) bool {
+    @setRuntimeSafety(false);
+    for (0..array.len) |i| {
+        if (T == []const u8) {
+            if (compareBytes(u8, array[i], elem)) {
+                return true;
+            }
+        } else {
+            if (array[i] == elem) {
+                return true;
+            }
+        }
+    }
+    return false;
 }

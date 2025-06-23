@@ -44,6 +44,10 @@ pub fn printMode(to: OutputMode) void {
     restoreMode();
 }
 
+pub fn printSerial(text: []const u8) void {
+    serial.writeString(str.makeRuntime(text));
+}
+
 pub fn getCursorPosition() mem.Tuple(u32, u32) {
     if (mode == OutputMode.VgaText) {
         return mem.Tuple(u32, u32).init(vgaTxt.cursor_x, vgaTxt.cursor_y);
