@@ -62,7 +62,7 @@ pub const Fix = struct {
     name: []const u8,
     offset: usize,
 
-    pub fn patch(self: *Fix, addr: usize, exec: *Executable) void {
+    pub fn patch(self: Fix, addr: usize, exec: *Executable) void {
         if (self.offset + 4 > exec.data.len) {
             return;
         }

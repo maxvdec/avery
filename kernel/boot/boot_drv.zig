@@ -45,6 +45,7 @@ pub fn findDrivers(drive: *ata.AtaDrive) mem.Array(driver.Driver) {
 }
 
 pub fn startDrivers(drivers: mem.Array(driver.Driver)) void {
+    @setRuntimeSafety(false);
     for (drivers.iterate()) |drv| {
         const rawDrv = drv_parse.makeRawDriver(drv);
         const finalDrv = drv_parse.loadDriver(rawDrv);

@@ -62,6 +62,7 @@ pub const Driver = struct {
 };
 
 pub fn loadDriver(path: []const u8, data: []const u8) ?*Driver {
+    @setRuntimeSafety(false);
     out.preserveMode();
     defer out.restoreMode();
     out.switchToSerial();

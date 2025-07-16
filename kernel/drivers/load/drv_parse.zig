@@ -30,6 +30,7 @@ pub const NativeFunction = struct {
 const WANTED_FUNCTIONS = &[_][]const u8{ "init", "destroy" };
 
 pub fn makeRawDriver(drv: driver.Driver) *RawDriver {
+    @setRuntimeSafety(false);
     const exec = arf.loadExecutable(drv.arf_data);
     if (exec == null) {
         sys.panic("Failed to load driver. Could not continue with execution");
@@ -42,6 +43,7 @@ pub fn makeRawDriver(drv: driver.Driver) *RawDriver {
 }
 
 pub fn loadDriver(rawDrv: *RawDriver) ?*LoadedDriver {
+    @setRuntimeSafety(false);
     const loadedDrv = kalloc.storeKernel(LoadedDriver);
     loadedDrv.* = LoadedDriver{
         .typ = rawDrv.typ,
@@ -52,54 +54,78 @@ pub fn loadDriver(rawDrv: *RawDriver) ?*LoadedDriver {
         .finalDrv = null,
     };
 
-    const NATIVE_FUNCTIONS = &[_]NativeFunction{
-        .{ .name = "avprint", .addr = @intFromPtr(&out.println) },
-        .{ .name = "native_function_2", .addr = 0x5678 },
+    const dataLength = rawDrv.exec.data.len;
+    out.print("Loading driver with length: ");
+    out.printn(dataLength);
+    out.println("");
+    const dataPtr = kalloc.requestKernel(dataLength);
+    if (dataPtr == null) {
+        sys.panic("Failed to allocate memory for driver data");
+    }
+
+    loadedDrv.base_addr = @intFromPtr(dataPtr);
+
+    const NativeSymbols = [_]NativeFunction{
+        .{ .name = "avprint", .addr = @intFromPtr(&out.print) },
     };
 
-    // First, we should go and replace the driver's interface fixes
-    for (0..rawDrv.exec.fixes.len) |i| {
-        var fix = rawDrv.exec.fixes[i];
-        for (NATIVE_FUNCTIONS) |nativeFunc| {
-            if (mem.compareBytes(u8, fix.name, nativeFunc.name)) {
-                fix.patch(nativeFunc.addr, rawDrv.exec);
+    var patched = mem.Array([]const u8).initKernel();
+
+    // Patch the symbols that the driver API exports
+    for (rawDrv.exec.fixes) |fix| {
+        for (NativeSymbols) |sym| {
+            if (mem.compareBytes(u8, fix.name, sym.name)) {
+                out.print("Patched native symbol ");
+                out.print(sym.name);
+                out.print(" at address: ");
+                out.printHex(sym.addr);
+                out.println("");
+                fix.patch(sym.addr, rawDrv.exec);
+                patched.append(fix.name);
             }
         }
     }
 
-    const code_size = rawDrv.exec.data.len;
-    const driver_memory = kalloc.requestKernel(code_size);
-    if (driver_memory == null) {
-        sys.panic("Cannot start system. Allocating memory for a driver crashed");
+    for (rawDrv.exec.symbols) |symbol| {
+        loadedDrv.functions.append(.{
+            .name = symbol.name,
+            .addr = symbol.offset + loadedDrv.base_addr,
+        });
     }
 
-    for (0..code_size) |i| {
-        driver_memory.?[i] = rawDrv.exec.data[i];
-    }
-
-    loadedDrv.base_addr = @intFromPtr(driver_memory.?);
-
-    for (0..rawDrv.exec.fixes.len) |i| {
-        var fix = rawDrv.exec.fixes[i];
-        for (0..rawDrv.exec.symbols.len) |j| {
-            const symbol = &rawDrv.exec.symbols[j];
-            if (mem.compareBytes(u8, fix.name, symbol.name)) {
-                out.switchToSerial();
-                out.print("Fixing symbol ");
-                out.println(symbol.name);
-                fix.patch(symbol.offset + loadedDrv.base_addr, rawDrv.exec);
+    for (rawDrv.exec.fixes) |fix| {
+        if (!mem.contains([]const u8, patched.coerce(), fix.name)) {
+            var addr: ?usize = null;
+            for (rawDrv.exec.symbols) |symbol| {
+                if (mem.compareBytes(u8, symbol.name, fix.name)) {
+                    addr = symbol.offset;
+                }
             }
+            if (addr == null) {
+                out.print("Could not find symbol ");
+                out.print(fix.name);
+                out.println("");
+                continue;
+            }
+            out.print("Patched driver symbol ");
+            out.print(fix.name);
+            out.print(" at address: ");
+            out.printHex(addr.? + loadedDrv.base_addr);
+            out.println("");
+            fix.patch(addr.? + loadedDrv.base_addr, rawDrv.exec);
+            patched.append(fix.name);
         }
     }
 
-    buildFunctionTable(rawDrv, loadedDrv);
-
-    loadedDrv.is_loaded = true;
+    for (0..rawDrv.exec.data.len) |i| {
+        dataPtr.?[i] = rawDrv.exec.data[i];
+    }
 
     return loadedDrv;
 }
 
 fn buildFunctionTable(rawDrv: *RawDriver, loadedDrv: *LoadedDriver) void {
+    @setRuntimeSafety(false);
     for (0..rawDrv.exec.symbols.len) |i| {
         const symbol = &rawDrv.exec.symbols[i];
 
@@ -113,6 +139,7 @@ fn buildFunctionTable(rawDrv: *RawDriver, loadedDrv: *LoadedDriver) void {
 }
 
 pub fn executeDriver(loadedDrv: *LoadedDriver) void {
+    @setRuntimeSafety(false);
     switch (loadedDrv.typ) {
         .Utility => {
             var init: ?*fn () drv_type.AveryStatus = null;
@@ -125,14 +152,14 @@ pub fn executeDriver(loadedDrv: *LoadedDriver) void {
                 }
             }
             if (init == null or destroy == null) {
-                sys.panic("Missing init or destroy function");
+                sys.panic("Could not initialize driver. The code is missing the init or destroy function");
             }
             loadedDrv.finalDrv = .{ .utility = .{
                 .init = init.?,
                 .destroy = destroy.?,
             } };
             out.switchToSerial();
-            mem.inspectChunk(loadedDrv.base_addr, 125);
+            mem.inspectChunk(@intFromPtr(loadedDrv.finalDrv.?.utility.init), 16);
             var status = loadedDrv.finalDrv.?.utility.init();
             while (true) {}
             if (status == drv_type.STATUS_OK) {
