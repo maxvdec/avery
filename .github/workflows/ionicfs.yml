@@ -1,0 +1,17 @@
+name: Check IonicFS Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install dependencies
+        run: |
+          brew install cmake make
+      - name: Build the project
+        run: cd tools/ionicfs && cmake . && make
