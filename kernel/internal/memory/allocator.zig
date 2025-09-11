@@ -233,7 +233,7 @@ pub fn store(comptime T: type) *T {
         sys.panic("Failed to allocate memory for object");
     };
 
-    return @alignCast(@ptrCast(ptr));
+    return @ptrCast(@alignCast(ptr));
 }
 
 pub fn storeMany(comptime T: type, count: usize) [*]T {
@@ -242,7 +242,7 @@ pub fn storeMany(comptime T: type, count: usize) [*]T {
     const ptr = request(size) orelse {
         sys.panic("Failed to allocate memory for array");
     };
-    return @alignCast(@ptrCast(ptr));
+    return @ptrCast(@alignCast(ptr));
 }
 
 pub fn free(ptr: [*]u8) void {
@@ -287,7 +287,7 @@ pub fn duplicate(comptime T: type, original: []const T) ?[*]T {
         sys.panic("Failed to allocate memory for duplicate");
     };
 
-    const dest: [*]u8 = @alignCast(@ptrCast(ptr));
+    const dest: [*]u8 = @ptrCast(@alignCast(ptr));
     for (0..original.len) |i| {
         dest[i] = original[i];
     }
@@ -302,7 +302,7 @@ pub fn duplicateObject(comptime T: type, original: T) ?*T {
         sys.panic("Failed to allocate memory for object duplicate");
     };
 
-    const dest: *T = @alignCast(@ptrCast(ptr));
+    const dest: *T = @ptrCast(@alignCast(ptr));
     dest.* = original;
 
     return dest;
@@ -315,7 +315,7 @@ pub fn clone(comptime T: type, original: []const T) ?[*]T {
         sys.panic("Failed to allocate memory for clone");
     };
 
-    const dest: [*]T = @alignCast(@ptrCast(ptr));
+    const dest: [*]T = @ptrCast(@alignCast(ptr));
     for (0..original.len) |i| {
         dest[i] = original[i];
     }

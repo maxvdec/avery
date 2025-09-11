@@ -160,6 +160,8 @@ pub fn executeDriver(loadedDrv: *LoadedDriver) void {
             } };
             out.switchToSerial();
             mem.inspectChunk(@intFromPtr(loadedDrv.finalDrv.?.utility.init), 16);
+            out.println("Inspecting address that fails:");
+            mem.inspectChunk(0x82103C94, 20);
             var status = loadedDrv.finalDrv.?.utility.init();
             while (true) {}
             if (status == drv_type.STATUS_OK) {

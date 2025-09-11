@@ -232,7 +232,7 @@ pub fn loadPageDirectory(phys_addr: usize) void {
     asm volatile ("mov %[addr], %%cr3"
         :
         : [addr] "r" (phys_addr),
-        : "memory"
+        : .{ .memory = true }
     );
 }
 
@@ -241,7 +241,7 @@ pub fn enablePaging() void {
     asm volatile ("mov %%cr0, %[out]"
         : [out] "=r" (cr0),
         :
-        : "memory"
+        : .{ .memory = true }
     );
 
     cr0 |= 0x80000000;
@@ -249,7 +249,7 @@ pub fn enablePaging() void {
     asm volatile ("mov %[in], %%cr0"
         :
         : [in] "r" (cr0),
-        : "memory"
+        : .{ .memory = true }
     );
 }
 
@@ -257,7 +257,7 @@ pub fn invlpg(addr: usize) void {
     asm volatile ("invlpg (%[addr])"
         :
         : [addr] "r" (addr),
-        : "memory"
+        : .{ .memory = true }
     );
 }
 

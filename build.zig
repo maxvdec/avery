@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const allocator = arena.allocator();
 
-    var all_files = std.ArrayList([]const u8).init(allocator);
+    var all_files = std.ArrayList([]const u8).empty;
     try collectZigFilesRecursive(&all_files, allocator, "kernel");
     try collectZigFilesRecursive(&all_files, allocator, "fusion");
 
@@ -39,9 +39,11 @@ pub fn build(b: *std.Build) !void {
     for (objects) |obj_file| {
         const obj = b.addObject(.{
             .name = std.fs.path.stem(obj_file),
-            .target = target,
-            .optimize = optimize,
-            .root_source_file = .{ .cwd_relative = obj_file },
+            .root_module = b.createModule(.{
+                .root_source_file = .{ .cwd_relative = obj_file },
+                .target = target,
+                .optimize = optimize,
+            }),
         });
 
         obj.root_module.stack_check = false;
@@ -96,7 +98,7 @@ fn collectZigFilesRecursive(
         switch (entry.kind) {
             .file => {
                 if (std.mem.endsWith(u8, entry.name, ".zig")) {
-                    try list.append(full_path);
+                    try list.append(allocator, full_path);
                 }
             },
             .directory => {

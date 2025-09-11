@@ -276,7 +276,7 @@ pub fn Array(comptime T: type) type {
                 sys.panic("Failed to allocate memory for array");
             };
 
-            const ptr = @as([*]T, @alignCast(@ptrCast(mem)));
+            const ptr = @as([*]T, @ptrCast(@alignCast(mem)));
             for (0..size) |i| {
                 ptr[i] = data[i];
             }
@@ -299,7 +299,7 @@ pub fn Array(comptime T: type) type {
                 sys.panic("Failed to allocate memory for array");
             };
 
-            const ptr = @as([*]T, @alignCast(@ptrCast(mem)));
+            const ptr = @as([*]T, @ptrCast(@alignCast(mem)));
             for (0..size) |i| {
                 ptr[i] = data[i];
             }
@@ -371,7 +371,7 @@ pub fn Array(comptime T: type) type {
                 };
             }
 
-            const new_ptr = @as([*]T, @alignCast(@ptrCast(new_mem.?)));
+            const new_ptr = @as([*]T, @ptrCast(@alignCast(new_mem.?)));
 
             if (self.ptr) |old_ptr| {
                 for (0..self.len) |i| {
@@ -498,7 +498,7 @@ pub fn Buffer(comptime T: type, comptime growSize: comptime_int) type {
                 sys.panic("Failed to allocate memory for buffer");
             };
 
-            const ptr = @as([*]T, @alignCast(@ptrCast(mem)));
+            const ptr = @as([*]T, @ptrCast(@alignCast(mem)));
             for (0..size) |i| {
                 ptr[i] = data[i];
             }
@@ -548,7 +548,7 @@ pub fn Buffer(comptime T: type, comptime growSize: comptime_int) type {
                 return Error(void).throw("Failed to allocate memory");
             };
 
-            const new_ptr = @as([*]T, @alignCast(@ptrCast(new_mem)));
+            const new_ptr = @as([*]T, @ptrCast(@alignCast(new_mem)));
 
             if (self.ptr) |old_ptr| {
                 for (0..self.len) |i| {
@@ -1027,7 +1027,7 @@ pub fn append(comptime T: type, array: []T, elem: T) []T {
         sys.panic("Failed to allocate memory for append");
     };
 
-    const new_array = @as([*]T, @alignCast(@ptrCast(result)));
+    const new_array = @as([*]T, @ptrCast(@alignCast(result)));
 
     for (0..array.len) |i| {
         new_array[i] = array[i];

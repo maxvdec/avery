@@ -308,7 +308,7 @@ pub fn storeKernel(comptime T: type) *T {
         sys.panic("Failed to allocate kernel memory for object");
     };
 
-    return @alignCast(@ptrCast(ptr));
+    return @ptrCast(@alignCast(ptr));
 }
 
 pub fn storeManyKernel(comptime T: type, count: usize) [*]T {
@@ -317,7 +317,7 @@ pub fn storeManyKernel(comptime T: type, count: usize) [*]T {
     const ptr = requestKernel(size) orelse {
         sys.panic("Failed to allocate kernel memory for array");
     };
-    return @alignCast(@ptrCast(ptr));
+    return @ptrCast(@alignCast(ptr));
 }
 
 pub fn freeKernel(ptr: [*]u8) void {

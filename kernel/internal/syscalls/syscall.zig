@@ -34,7 +34,7 @@ pub fn perform(
           [a3] "rm" (arg3),
           [a4] "rm" (arg4),
           [a5] "rm" (arg5),
-        : "eax", "ebx", "ecx", "edx", "esi", "edi"
+        : .{ .eax = true, .ebx = true, .ecx = true, .edx = true, .esi = true, .edi = true }
     );
     return ret;
 }

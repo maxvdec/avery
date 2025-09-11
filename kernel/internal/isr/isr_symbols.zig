@@ -32,7 +32,7 @@ fn delay(iterations: u64) void {
     }
 }
 
-export fn fault_handler(r: *regs) callconv(.C) noreturn {
+export fn fault_handler(r: *regs) noreturn {
     @setRuntimeSafety(false);
     out.initOutputs();
     out.switchToSerial();

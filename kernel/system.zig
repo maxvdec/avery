@@ -47,7 +47,6 @@ pub fn inb(port: u16) u8 {
         \\ inb %dx, %al
         : [_] "={al}" (result),
         : [_] "{dx}" (port),
-        : "volatile"
     );
     return result;
 }
@@ -59,7 +58,6 @@ pub fn inw(port: u16) u16 {
         \\ inw %dx, %ax
         : [_] "={ax}" (value),
         : [_] "{dx}" (port),
-        : "volatile"
     );
     return value;
 }
@@ -71,7 +69,6 @@ pub fn outb(port: u16, value: u8) void {
         :
         : [_] "{dx}" (port),
           [_] "{al}" (value),
-        : "volatile"
     );
 }
 
@@ -82,7 +79,6 @@ pub fn outw(port: u16, value: u16) void {
         :
         : [_] "{dx}" (port),
           [_] "{ax}" (value),
-        : "volatile"
     );
 }
 
