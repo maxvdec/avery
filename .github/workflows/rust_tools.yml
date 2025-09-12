@@ -1,0 +1,17 @@
+name: Check Driver Packer and ARF Tooling
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install dependencies
+        run: |
+          brew install rust
+      - name: Build the project
+        run: cargo check

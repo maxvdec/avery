@@ -1,0 +1,17 @@
+name: Build the project
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install dependencies
+        run: |
+          brew install make zig nasm x86_64-elf-binutils
+      - name: Build the project
+        run: zig build

@@ -1,5 +1,15 @@
 # The Avery Kernel
 
+![GitHub contributors](https://img.shields.io/github/contributors/maxvdec/avery)
+![GitHub last commit](https://img.shields.io/github/last-commit/maxvdec/avery)
+![Tests](https://github.com/maxvdec/avery/actions/workflows/build.yml/badge.svg)
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/maxvdec/avery)
+![GitHub Repo stars](https://img.shields.io/github/stars/maxvdec/avery)
+
+---
+
+**Fast, Forever**
+
 The Avery Kernel is a versatile, fast, and modern kernel written in Zig for the modern era, it is totally open-source and it aims to be the kernel for the XXI century.
 
 # Features
