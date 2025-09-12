@@ -71,6 +71,7 @@ pub fn loadDriver(rawDrv: *RawDriver) ?*LoadedDriver {
 
     var patched = mem.Array([]const u8).initKernel();
 
+    var patched_count: usize = 0;
     // Patch the symbols that the driver API exports
     for (rawDrv.exec.fixes) |fix| {
         for (NativeSymbols) |sym| {
@@ -82,6 +83,7 @@ pub fn loadDriver(rawDrv: *RawDriver) ?*LoadedDriver {
                 out.println("");
                 fix.patch(sym.addr, rawDrv.exec);
                 patched.append(fix.name);
+                patched_count += 1;
             }
         }
     }
@@ -114,12 +116,17 @@ pub fn loadDriver(rawDrv: *RawDriver) ?*LoadedDriver {
             out.println("");
             fix.patch(addr.? + loadedDrv.base_addr, rawDrv.exec);
             patched.append(fix.name);
+            patched_count += 1;
         }
     }
 
     for (0..rawDrv.exec.data.len) |i| {
         dataPtr.?[i] = rawDrv.exec.data[i];
     }
+
+    out.print("In total, patched ");
+    out.printn(patched_count);
+    out.println(" symbols");
 
     return loadedDrv;
 }
@@ -159,9 +166,6 @@ pub fn executeDriver(loadedDrv: *LoadedDriver) void {
                 .destroy = destroy.?,
             } };
             out.switchToSerial();
-            mem.inspectChunk(@intFromPtr(loadedDrv.finalDrv.?.utility.init), 16);
-            out.println("Inspecting address that fails:");
-            mem.inspectChunk(0x82103C94, 20);
             var status = loadedDrv.finalDrv.?.utility.init();
             while (true) {}
             if (status == drv_type.STATUS_OK) {
